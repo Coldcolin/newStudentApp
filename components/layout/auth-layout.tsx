@@ -55,7 +55,7 @@ export function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
       {/* Left Side - Image */}
       <div className="relative hidden w-1/2 lg:block">
         <Image
-          src="/authImage.png"
+          src="/AuthImage.png"
           alt="Student with books"
           fill
           className="object-cover"
