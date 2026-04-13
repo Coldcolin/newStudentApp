@@ -19,8 +19,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAppDispatch, useAuthLoading, useAuthError } from "@/lib/store/hooks";
-import { registerUser, clearError, setCredentials } from "@/lib/store/slices/authSlice";
+import {
+  useAppDispatch,
+  useAuthLoading,
+  useAuthError,
+} from "@/lib/store/hooks";
+import {
+  registerUser,
+  clearError,
+  setCredentials,
+} from "@/lib/store/slices/authSlice";
 import { toast } from "sonner";
 
 const signupSchema = z
@@ -33,17 +41,31 @@ const signupSchema = z
       .min(8, "Password must be at least 8 characters")
       .regex(
         /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-        "Password must contain uppercase, lowercase, and number"
+        "Password must contain uppercase, lowercase, and number",
       ),
     confirmPassword: z.string(),
     role: z.enum(["student", "teacher"], {
       required_error: "Please select a role",
     }),
+    hub: z.enum(["HQ", "Festac"]).optional(),
+    course: z.enum(["Frontend", "Backend", "Product Design"]).optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords don't match",
     path: ["confirmPassword"],
-  });
+  })
+  .refine(
+    (data) => {
+      if (data.role === "student") {
+        return data.hub !== undefined && data.course !== undefined;
+      }
+      return true;
+    },
+    {
+      message: "Hub and course are required for students",
+      path: ["hub"],
+    },
+  );
 
 type SignupFormData = z.infer<typeof signupSchema>;
 
@@ -73,6 +95,8 @@ export default function SignupPage() {
     },
   });
 
+  const selectedRole = watch("role");
+
   const firstName = watch("firstName");
   const lastName = watch("lastName");
 
@@ -98,6 +122,8 @@ export default function SignupPage() {
         firstName: data.firstName,
         lastName: data.lastName,
         role: data.role as "admin" | "teacher" | "student",
+        hub: data.hub,
+        course: data.course,
         avatar: avatarPreview || undefined,
       };
 
@@ -106,7 +132,7 @@ export default function SignupPage() {
           user: demoUser,
           token: "demo-token-123",
           refreshToken: "demo-refresh-token-456",
-        })
+        }),
       );
 
       toast.success("Account created successfully!");
@@ -117,10 +143,7 @@ export default function SignupPage() {
   };
 
   return (
-    <AuthLayout
-      title="Sign Up"
-      subtitle="Create your account to get started."
-    >
+    <AuthLayout title="Sign Up" subtitle="Create your account to get started.">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         {authError && (
           <div className="rounded-lg bg-[#ec1c24]/10 p-3 text-sm text-[#ec1c24]">
@@ -165,7 +188,9 @@ export default function SignupPage() {
               className="h-11"
             />
             {errors.firstName && (
-              <p className="text-sm text-[#ec1c24]">{errors.firstName.message}</p>
+              <p className="text-sm text-[#ec1c24]">
+                {errors.firstName.message}
+              </p>
             )}
           </div>
           <div className="space-y-2">
@@ -177,7 +202,9 @@ export default function SignupPage() {
               className="h-11"
             />
             {errors.lastName && (
-              <p className="text-sm text-[#ec1c24]">{errors.lastName.message}</p>
+              <p className="text-sm text-[#ec1c24]">
+                {errors.lastName.message}
+              </p>
             )}
           </div>
         </div>
@@ -200,7 +227,11 @@ export default function SignupPage() {
         {/* Role Selection */}
         <div className="space-y-2">
           <Label htmlFor="role">Role</Label>
-          <Select onValueChange={(value) => setValue("role", value as "student" | "teacher")}>
+          <Select
+            onValueChange={(value) =>
+              setValue("role", value as "student" | "teacher")
+            }
+          >
             <SelectTrigger className="h-11">
               <SelectValue placeholder="Select your role" />
             </SelectTrigger>
@@ -213,6 +244,56 @@ export default function SignupPage() {
             <p className="text-sm text-[#ec1c24]">{errors.role.message}</p>
           )}
         </div>
+
+        {/* Hub Selection - Only for Students */}
+        {selectedRole === "student" && (
+          <div className="space-y-2">
+            <Label htmlFor="hub">Hub</Label>
+            <Select
+              onValueChange={(value) =>
+                setValue("hub", value as "HQ" | "Festac")
+              }
+            >
+              <SelectTrigger className="h-11">
+                <SelectValue placeholder="Select your hub" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="HQ">HQ</SelectItem>
+                <SelectItem value="Festac">Festac</SelectItem>
+              </SelectContent>
+            </Select>
+            {errors.hub && (
+              <p className="text-sm text-[#ec1c24]">{errors.hub.message}</p>
+            )}
+          </div>
+        )}
+
+        {/* Course Selection - Only for Students */}
+        {selectedRole === "student" && (
+          <div className="space-y-2">
+            <Label htmlFor="course">Course</Label>
+            <Select
+              onValueChange={(value) =>
+                setValue(
+                  "course",
+                  value as "Frontend" | "Backend" | "Product Design",
+                )
+              }
+            >
+              <SelectTrigger className="h-11">
+                <SelectValue placeholder="Select your course" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Frontend">Frontend</SelectItem>
+                <SelectItem value="Backend">Backend</SelectItem>
+                <SelectItem value="Product Design">Product Design</SelectItem>
+              </SelectContent>
+            </Select>
+            {errors.course && (
+              <p className="text-sm text-[#ec1c24]">{errors.course.message}</p>
+            )}
+          </div>
+        )}
 
         {/* Password */}
         <div className="space-y-2">
@@ -266,7 +347,9 @@ export default function SignupPage() {
             </button>
           </div>
           {errors.confirmPassword && (
-            <p className="text-sm text-[#ec1c24]">{errors.confirmPassword.message}</p>
+            <p className="text-sm text-[#ec1c24]">
+              {errors.confirmPassword.message}
+            </p>
           )}
         </div>
 

@@ -11,6 +11,7 @@ import {
   CheckSquare,
   Send,
   Plus,
+  Calendar,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -79,6 +80,7 @@ interface Submission {
   status: "graded" | "pending" | "late";
   score?: number;
   feedback?: string;
+  comments?: string;
 }
 
 // Mock data for admin view - each student has unique ID
@@ -276,12 +278,45 @@ function StudentAssessmentView({
     useState<Submission | null>(null);
   const [isScoreModalOpen, setIsScoreModalOpen] = useState(false);
   const [scoreInput, setScoreInput] = useState("");
+  const [commentsInput, setCommentsInput] = useState("");
+
+  // Task submission modal state (for students)
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [isTaskSubmitModalOpen, setIsTaskSubmitModalOpen] = useState(false);
+  const [submissionLink, setSubmissionLink] = useState("");
 
   const handleSubmissionClick = (submission: Submission) => {
     if (!isAdminViewing) return;
     setSelectedSubmission(submission);
     setScoreInput(submission.score?.toString() || "");
+    setCommentsInput(submission.comments || "");
     setIsScoreModalOpen(true);
+  };
+
+  const handleTaskClick = (task: Task) => {
+    // Only allow students (not admin viewing) to click tasks for submission
+    if (isAdminViewing) return;
+    setSelectedTask(task);
+    setSubmissionLink("");
+    setIsTaskSubmitModalOpen(true);
+  };
+
+  const handleTaskSubmit = () => {
+    if (!submissionLink.trim()) {
+      toast.error("Please enter a submission link");
+      return;
+    }
+    // Mock submission - in real app this would call an API
+    toast.success(`Task "${selectedTask?.title}" submitted successfully!`);
+    setIsTaskSubmitModalOpen(false);
+    setSelectedTask(null);
+    setSubmissionLink("");
+  };
+
+  const handleCloseTaskModal = () => {
+    setIsTaskSubmitModalOpen(false);
+    setSelectedTask(null);
+    setSubmissionLink("");
   };
 
   const handleSaveScore = () => {
@@ -299,15 +334,21 @@ function StudentAssessmentView({
       mockSubmissions[submissionIndex].status = "graded";
     }
     toast.success(`Score saved for ${selectedSubmission?.title}`);
+    // Save comments to the submission (in real app this would be an API call)
+    if (selectedSubmission) {
+      selectedSubmission.comments = commentsInput;
+    }
     setIsScoreModalOpen(false);
     setSelectedSubmission(null);
     setScoreInput("");
+    setCommentsInput("");
   };
 
   const handleCloseModal = () => {
     setIsScoreModalOpen(false);
     setSelectedSubmission(null);
     setScoreInput("");
+    setCommentsInput("");
   };
 
   const getStatusColor = (status: string) => {
@@ -411,7 +452,12 @@ function StudentAssessmentView({
               {mockTasks.map((task) => (
                 <div
                   key={task.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-border rounded-lg hover:bg-gray-50/50 transition-colors gap-3"
+                  onClick={() => handleTaskClick(task)}
+                  className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-border rounded-lg hover:bg-gray-50/50 transition-colors gap-3 ${
+                    !isAdminViewing
+                      ? "cursor-pointer hover:border-[#ffb703]/50"
+                      : ""
+                  }`}
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -723,6 +769,23 @@ function StudentAssessmentView({
                 Enter a value between 0 and 100
               </p>
             </div>
+
+            {/* Comments */}
+            <div className="space-y-2">
+              <Label htmlFor="comments" className="text-sm font-medium">
+                Instructor Comments
+              </Label>
+              <textarea
+                id="comments"
+                placeholder="Enter feedback or comments for the student..."
+                value={commentsInput}
+                onChange={(e) => setCommentsInput(e.target.value)}
+                className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-y"
+              />
+              <p className="text-xs text-muted-foreground">
+                Provide constructive feedback to help the student improve
+              </p>
+            </div>
           </div>
 
           <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -734,6 +797,83 @@ function StudentAssessmentView({
               className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
             >
               Save Score
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Task Submission Modal (for students) */}
+      <Dialog
+        open={isTaskSubmitModalOpen}
+        onOpenChange={setIsTaskSubmitModalOpen}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Submit Task</DialogTitle>
+            <DialogDescription>
+              Review task details and submit your completed work
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 py-4">
+            {/* Task Info */}
+            <div className="p-4 bg-gray-50 rounded-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold text-foreground">
+                  {selectedTask?.title}
+                </h4>
+                <Badge
+                  className={
+                    selectedTask ? getStatusColor(selectedTask.status) : ""
+                  }
+                >
+                  {selectedTask?.status.charAt(0).toUpperCase() +
+                    (selectedTask?.status.slice(1).replace("-", " ") || "")}
+                </Badge>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {selectedTask?.description}
+              </p>
+              <div className="flex items-center gap-2 text-sm">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">
+                  Due:{" "}
+                  {selectedTask
+                    ? new Date(selectedTask.dueDate).toLocaleDateString()
+                    : ""}
+                </span>
+              </div>
+            </div>
+
+            {/* Submission Link Input */}
+            <div className="space-y-2">
+              <Label htmlFor="submissionLink" className="text-sm font-medium">
+                Submission Link
+              </Label>
+              <Input
+                id="submissionLink"
+                type="url"
+                placeholder="https://github.com/yourusername/your-repo or https://..."
+                value={submissionLink}
+                onChange={(e) => setSubmissionLink(e.target.value)}
+                className="h-12"
+              />
+              <p className="text-xs text-muted-foreground">
+                Paste the link to your completed task (GitHub, CodePen, hosted
+                site, etc.)
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={handleCloseTaskModal}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleTaskSubmit}
+              className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+            >
+              Submit Task
             </Button>
           </DialogFooter>
         </DialogContent>
