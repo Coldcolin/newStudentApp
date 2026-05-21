@@ -12,16 +12,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+// import {
+//   Select,
+//   SelectContent,
+//   SelectItem,
+//   SelectTrigger,
+//   SelectValue,
+// } from "@/components/ui/select";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useAppDispatch, useAuthLoading, useAuthError } from "@/lib/store/hooks";
-import { loginUser, clearError, setCredentials } from "@/lib/store/slices/authSlice";
+  useAppDispatch,
+  useAuthLoading,
+  useAuthError,
+} from "@/lib/store/hooks";
+import {
+  loginUser,
+  clearError,
+  setLoading,
+  setCredentials,
+} from "@/lib/store/slices/authSlice";
 import { toast } from "sonner";
+import axiosInstance from "@/lib/api/axios";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -35,9 +45,11 @@ export default function LoginPage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const isLoading = useAuthLoading();
-  const authError = useAuthError();
+  // const authError = useAuthError();
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<"admin" | "student">("admin");
+  // const [selectedRole, setSelectedRole] = useState<"admin" | "student">(
+  //   "admin",
+  // );
 
   const {
     register,
@@ -54,32 +66,90 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginFormData) => {
     dispatch(clearError());
+    dispatch(setLoading(true));
 
-    // For demo purposes, simulate a successful login
-    // In production, this would call the actual API
     try {
-      // Simulated demo login - role based on selection
-      const demoUser = {
-        id: "1",
+      const response = await axiosInstance.post("/users/login", {
         email: data.email,
-        firstName: selectedRole === "admin" ? "Helen" : "Chiamaka",
-        lastName: selectedRole === "admin" ? "Anderson" : "Dubem",
-        role: selectedRole,
-        avatar: "/placeholder.svg?height=100&width=100&query=woman%20professional",
+        password: data.password,
+      });
+
+      // Extract token, stack, and user info from API response
+      const { token, stack, userInfo } = response.data.data;
+      const userId = userInfo?.id;
+
+      // Store token in storage based on rememberMe preference
+      if (data.rememberMe) {
+        localStorage.setItem("token", token);
+      } else {
+        sessionStorage.setItem("token", token);
+      }
+
+      // Determine role based on stack: "Tutor" = admin, anything else = student
+      const role = stack === "Tutor" ? "admin" : "student";
+
+      // Create initial user object (will be updated after fetching full details)
+      const initialUser = {
+        id: userId || "",
+        email: userInfo?.email || data.email,
+        fullName: userInfo?.name || data.email.split("@")[0],
+        role: role as "admin" | "teacher" | "student",
+        stack: userInfo?.stack,
+        bio: userInfo?.bio,
+        phone: userInfo?.phone,
+        avatar: undefined,
       };
 
+      // Dispatch credentials FIRST so token is available for API calls
       dispatch(
         setCredentials({
-          user: demoUser,
-          token: "demo-token-123",
-          refreshToken: "demo-refresh-token-456",
-        })
+          user: initialUser,
+          token,
+          refreshToken: token, // API only returns one token, using as both
+        }),
       );
+
+      // Fetch full user details using the auth/me endpoint
+      let fullUser = null;
+      try {
+        const userResponse = await axiosInstance.get(
+          `/users/oneUser/${userId}`,
+        );
+        fullUser = userResponse.data?.data || userResponse.data;
+      } catch (userError) {
+        console.error("Failed to fetch user details:", userError);
+      }
+
+      // Update user with full details if fetched successfully
+      if (fullUser) {
+        const updatedUser = {
+          id: fullUser._id || userId || "",
+          email: fullUser.email || userInfo?.email || data.email,
+          fullName: fullUser.name || userInfo?.name || data.email.split("@")[0],
+          role: role as "admin" | "teacher" | "student",
+          stack: userInfo?.stack,
+          avatar: fullUser.image || undefined,
+        };
+        dispatch(
+          setCredentials({
+            user: updatedUser,
+            token,
+            refreshToken: token,
+          }),
+        );
+      }
 
       toast.success("Login successful!");
       router.push("/dashboard");
-    } catch {
-      toast.error("Login failed. Please try again.");
+    } catch (error: unknown) {
+      // console.log("Login error:", error);
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Login failed. Please try again.";
+      toast.error(errorMessage);
+    } finally {
+      dispatch(setLoading(false));
     }
   };
 
@@ -90,9 +160,16 @@ export default function LoginPage() {
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Demo Role Selector */}
-        <div className="rounded-lg border border-[#ffb703]/50 bg-[#ffb703]/10 p-4 space-y-3">
-          <p className="text-sm font-medium text-[#08022b]">Demo Mode: Select Role</p>
-          <Select value={selectedRole} onValueChange={(value: "admin" | "student") => setSelectedRole(value)}>
+        {/* <div className="rounded-lg border border-[#ffb703]/50 bg-[#ffb703]/10 p-4 space-y-3">
+          <p className="text-sm font-medium text-[#08022b]">
+            Demo Mode: Select Role
+          </p>
+          <Select
+            value={selectedRole}
+            onValueChange={(value: "admin" | "student") =>
+              setSelectedRole(value)
+            }
+          >
             <SelectTrigger className="bg-white">
               <SelectValue placeholder="Select role" />
             </SelectTrigger>
@@ -102,17 +179,17 @@ export default function LoginPage() {
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            {selectedRole === "admin" 
+            {selectedRole === "admin"
               ? "Admin can view all students, assessments, and attendance records"
               : "Student can only view their own profile and check-in for attendance"}
           </p>
-        </div>
+        </div> */}
 
-        {authError && (
+        {/* {authError && (
           <div className="rounded-lg bg-[#ec1c24]/10 p-3 text-sm text-[#ec1c24]">
             {authError}
           </div>
-        )}
+        )} */}
 
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>

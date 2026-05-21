@@ -147,7 +147,7 @@ export const deleteStudent = createAsyncThunk(
 
 export const fetchAssessments = createAsyncThunk(
   "user/fetchAssessments",
-  async (_studentId?: string, { rejectWithValue }) => {
+  async (_, { rejectWithValue }) => {
     try {
       await new Promise((resolve) => setTimeout(resolve, 300));
       return [

@@ -52,6 +52,6 @@ export const store = makeStore();
 export const persistor = persistStore(store);
 
 // Infer types from store
-export type RootState = ReturnType<typeof store.getState>;
+export type RootState = ReturnType<typeof rootReducer>;
 export type AppDispatch = typeof store.dispatch;
 export type AppStore = ReturnType<typeof makeStore>;

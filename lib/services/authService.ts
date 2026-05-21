@@ -8,6 +8,7 @@ interface User {
   lastName: string;
   role: "admin" | "teacher" | "student";
   avatar?: string;
+  stack?: string;
 }
 
 // Response types

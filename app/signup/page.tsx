@@ -27,14 +27,15 @@ import {
 import {
   registerUser,
   clearError,
+  setLoading,
   setCredentials,
 } from "@/lib/store/slices/authSlice";
 import { toast } from "sonner";
+import axiosInstance from "@/lib/api/axios";
 
 const signupSchema = z
   .object({
-    firstName: z.string().min(2, "First name must be at least 2 characters"),
-    lastName: z.string().min(2, "Last name must be at least 2 characters"),
+    name: z.string().min(2, "Name must be at least 2 characters"),
     email: z.string().email("Please enter a valid email address"),
     password: z
       .string()
@@ -44,28 +45,21 @@ const signupSchema = z
         "Password must contain uppercase, lowercase, and number",
       ),
     confirmPassword: z.string(),
-    role: z.enum(["student", "teacher"], {
-      required_error: "Please select a role",
+    hub: z.enum(["hq", "festac"], {
+      required_error: "Please select a hub",
     }),
-    hub: z.enum(["HQ", "Festac"]).optional(),
-    course: z.enum(["Frontend", "Backend", "Product Design"]).optional(),
+    phone: z
+      .string()
+      .min(10, "Phone number must be at least 10 digits")
+      .regex(/^\+?[\d\s-()]+$/, "Please enter a valid phone number"),
+    stack: z.enum(["frontend", "backend", "product design", "tutor"], {
+      required_error: "Please select a stack/course",
+    }),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords don't match",
     path: ["confirmPassword"],
-  })
-  .refine(
-    (data) => {
-      if (data.role === "student") {
-        return data.hub !== undefined && data.course !== undefined;
-      }
-      return true;
-    },
-    {
-      message: "Hub and course are required for students",
-      path: ["hub"],
-    },
-  );
+  });
 
 type SignupFormData = z.infer<typeof signupSchema>;
 
@@ -87,18 +81,16 @@ export default function SignupPage() {
   } = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
     defaultValues: {
-      firstName: "",
-      lastName: "",
+      name: "",
       email: "",
       password: "",
       confirmPassword: "",
+      phone: "",
     },
   });
 
-  const selectedRole = watch("role");
-
-  const firstName = watch("firstName");
-  const lastName = watch("lastName");
+  const name = watch("name");
+  // const lastName = watch("lastName");
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -113,43 +105,72 @@ export default function SignupPage() {
 
   const onSubmit = async (data: SignupFormData) => {
     dispatch(clearError());
+    dispatch(setLoading(true));
 
-    // For demo purposes, simulate a successful registration
     try {
-      const demoUser = {
-        id: "1",
-        email: data.email,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        role: data.role as "admin" | "teacher" | "student",
-        hub: data.hub,
-        course: data.course,
-        avatar: avatarPreview || undefined,
-      };
+      // Create FormData for multipart/form-data request
+      const formData = new FormData();
+      formData.append("name", data.name);
+      formData.append("email", data.email);
+      formData.append("password", data.password);
+      formData.append("hub", data.hub);
+      formData.append("phone", data.phone);
+      formData.append("stack", data.stack);
 
+      // Append image if available
+      const avatarFile = (document.getElementById("avatar") as HTMLInputElement)
+        ?.files?.[0];
+      if (avatarFile) {
+        formData.append("image", avatarFile);
+      }
+
+      // Call the actual API endpoint using axios
+      // Note: axios automatically sets Content-Type to multipart/form-data for FormData
+      // withCredentials: false to avoid CORS wildcard conflict with credentials
+      const response = await axiosInstance.post("/users/create", formData, {
+        withCredentials: false,
+      });
+
+      const result = response.data;
+
+      // Extract token from response (adapt based on actual API response structure)
+      const { token, user } = result.data || result;
+
+      // Store token and update auth state
       dispatch(
         setCredentials({
-          user: demoUser,
-          token: "demo-token-123",
-          refreshToken: "demo-refresh-token-456",
+          user: {
+            id: user?._id || user?.id || "",
+            email: data.email,
+            fullName: data.name,
+            role: data.stack === "tutor" ? "admin" : "student",
+          },
+          token: token,
+          refreshToken: token,
         }),
       );
 
       toast.success("Account created successfully!");
-      router.push("/dashboard");
-    } catch {
-      toast.error("Registration failed. Please try again.");
+      router.push("/login");
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Registration failed. Please try again.";
+      toast.error(errorMessage);
+    } finally {
+      dispatch(setLoading(false));
     }
   };
 
   return (
     <AuthLayout title="Sign Up" subtitle="Create your account to get started.">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-        {authError && (
+        {/* {authError && (
           <div className="rounded-lg bg-[#ec1c24]/10 p-3 text-sm text-[#ec1c24]">
             {authError}
           </div>
-        )}
+        )} */}
 
         {/* Avatar Upload */}
         <div className="flex justify-center">
@@ -157,8 +178,7 @@ export default function SignupPage() {
             <Avatar className="h-20 w-20 border-4 border-[#ffb703]">
               <AvatarImage src={avatarPreview || undefined} />
               <AvatarFallback className="bg-[#f3f4f6] text-[#687182] text-xl">
-                {firstName?.[0]}
-                {lastName?.[0]}
+                {name?.[0]}
               </AvatarFallback>
             </Avatar>
             <label
@@ -177,36 +197,18 @@ export default function SignupPage() {
           </div>
         </div>
 
-        {/* Name Fields */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="firstName">First Name</Label>
-            <Input
-              id="firstName"
-              placeholder="John"
-              {...register("firstName")}
-              className="h-11"
-            />
-            {errors.firstName && (
-              <p className="text-sm text-[#ec1c24]">
-                {errors.firstName.message}
-              </p>
-            )}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="lastName">Last Name</Label>
-            <Input
-              id="lastName"
-              placeholder="Doe"
-              {...register("lastName")}
-              className="h-11"
-            />
-            {errors.lastName && (
-              <p className="text-sm text-[#ec1c24]">
-                {errors.lastName.message}
-              </p>
-            )}
-          </div>
+        {/* Name */}
+        <div className="space-y-2">
+          <Label htmlFor="name">Full Name</Label>
+          <Input
+            id="name"
+            placeholder="John Doe"
+            {...register("name")}
+            className="h-11"
+          />
+          {errors.name && (
+            <p className="text-sm text-[#ec1c24]">{errors.name.message}</p>
+          )}
         </div>
 
         {/* Email */}
@@ -224,76 +226,65 @@ export default function SignupPage() {
           )}
         </div>
 
-        {/* Role Selection */}
+        {/* Phone */}
         <div className="space-y-2">
-          <Label htmlFor="role">Role</Label>
-          <Select
-            onValueChange={(value) =>
-              setValue("role", value as "student" | "teacher")
-            }
-          >
-            <SelectTrigger className="h-11">
-              <SelectValue placeholder="Select your role" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="student">Student</SelectItem>
-              <SelectItem value="teacher">Teacher</SelectItem>
-            </SelectContent>
-          </Select>
-          {errors.role && (
-            <p className="text-sm text-[#ec1c24]">{errors.role.message}</p>
+          <Label htmlFor="phone">Phone Number</Label>
+          <Input
+            id="phone"
+            type="tel"
+            placeholder="+234 800 000 0000"
+            {...register("phone")}
+            className="h-11"
+          />
+          {errors.phone && (
+            <p className="text-sm text-[#ec1c24]">{errors.phone.message}</p>
           )}
         </div>
 
-        {/* Hub Selection - Only for Students */}
-        {selectedRole === "student" && (
-          <div className="space-y-2">
-            <Label htmlFor="hub">Hub</Label>
-            <Select
-              onValueChange={(value) =>
-                setValue("hub", value as "HQ" | "Festac")
-              }
-            >
-              <SelectTrigger className="h-11">
-                <SelectValue placeholder="Select your hub" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="HQ">HQ</SelectItem>
-                <SelectItem value="Festac">Festac</SelectItem>
-              </SelectContent>
-            </Select>
-            {errors.hub && (
-              <p className="text-sm text-[#ec1c24]">{errors.hub.message}</p>
-            )}
-          </div>
-        )}
+        {/* Hub Selection */}
+        <div className="space-y-2">
+          <Label htmlFor="hub">Hub</Label>
+          <Select
+            onValueChange={(value) => setValue("hub", value as "hq" | "festac")}
+          >
+            <SelectTrigger className="h-11">
+              <SelectValue placeholder="Select your hub" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="hq">HQ</SelectItem>
+              <SelectItem value="festac">Festac</SelectItem>
+            </SelectContent>
+          </Select>
+          {errors.hub && (
+            <p className="text-sm text-[#ec1c24]">{errors.hub.message}</p>
+          )}
+        </div>
 
-        {/* Course Selection - Only for Students */}
-        {selectedRole === "student" && (
-          <div className="space-y-2">
-            <Label htmlFor="course">Course</Label>
-            <Select
-              onValueChange={(value) =>
-                setValue(
-                  "course",
-                  value as "Frontend" | "Backend" | "Product Design",
-                )
-              }
-            >
-              <SelectTrigger className="h-11">
-                <SelectValue placeholder="Select your course" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Frontend">Frontend</SelectItem>
-                <SelectItem value="Backend">Backend</SelectItem>
-                <SelectItem value="Product Design">Product Design</SelectItem>
-              </SelectContent>
-            </Select>
-            {errors.course && (
-              <p className="text-sm text-[#ec1c24]">{errors.course.message}</p>
-            )}
-          </div>
-        )}
+        {/* Stack Selection */}
+        <div className="space-y-2">
+          <Label htmlFor="stack">Stack / Course</Label>
+          <Select
+            onValueChange={(value) =>
+              setValue(
+                "stack",
+                value as "frontend" | "backend" | "product design" | "tutor",
+              )
+            }
+          >
+            <SelectTrigger className="h-11">
+              <SelectValue placeholder="Select your stack" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="frontend">Frontend</SelectItem>
+              <SelectItem value="backend">Backend</SelectItem>
+              <SelectItem value="product design">Product Design</SelectItem>
+              <SelectItem value="tutor">Tutor</SelectItem>
+            </SelectContent>
+          </Select>
+          {errors.stack && (
+            <p className="text-sm text-[#ec1c24]">{errors.stack.message}</p>
+          )}
+        </div>
 
         {/* Password */}
         <div className="space-y-2">

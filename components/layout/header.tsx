@@ -55,19 +55,14 @@ export function Header({ title }: HeaderProps) {
                   }
                 />
                 <AvatarFallback className="bg-[#ffb703] text-[#08022b]">
-                  {user?.firstName?.[0]}
-                  {user?.lastName?.[0]}
+                  {user?.fullName?.[0]}
                 </AvatarFallback>
               </Avatar>
               <div className="hidden flex-col items-start md:flex">
                 <span className="text-sm font-semibold text-foreground">
-                  {user?.firstName || "Chiamaka"} {user?.lastName || "Dubem"}
+                  {user?.fullName || "Chiamaka Dubem"}
                 </span>
-                <span className="text-xs text-[#219ebc]">
-                  {user?.role === "admin"
-                    ? "Frontend Designer"
-                    : user?.role || "Frontend Designer"}
-                </span>
+                <span className="text-xs text-[#219ebc]">{user?.role}</span>
               </div>
             </Button>
           </DropdownMenuTrigger>
@@ -77,9 +72,9 @@ export function Header({ title }: HeaderProps) {
             <DropdownMenuItem asChild>
               <Link href="/profile">Profile</Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
+            {/* <DropdownMenuItem asChild>
               <Link href="/settings">Settings</Link>
-            </DropdownMenuItem>
+            </DropdownMenuItem> */}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={handleLogout}

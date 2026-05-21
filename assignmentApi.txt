@@ -1,0 +1,534 @@
+===============================================================================
+                        ASSIGNMENT MANAGEMENT API DOCUMENTATION
+                              Base URL: https://sotw-back-onrender.com
+===============================================================================
+
+=== ASSIGNMENT MANAGEMENT ENDPOINTS ===
+
+1. CREATE ASSIGNMENT
+   Method: POST
+   Endpoint: /assignments/create
+   Authentication: Not required
+   
+   Required Fields:
+   - week (number, min: 1)
+   - title (string)
+   - taskDescription (string)
+   - stack (enum: "Front End", "Back End", "Product Design")
+   - dueDate (string, format: "YYYY-MM-DD")
+   - dueTime (string, format: "HH:MM")
+   
+   Optional Fields:
+   - allowLateSubmissions (boolean, default: false)
+   
+   Example Request:
+   POST https://sotw-back-onrender.com/assignments/create
+   Content-Type: application/json
+   
+   {
+     "week": 3,
+     "title": "React Component Development",
+     "taskDescription": "Build a responsive dashboard component using React hooks and styled-components. Include proper state management and error handling.",
+     "stack": "Front End",
+     "dueDate": "2026-02-15",
+     "dueTime": "23:59",
+     "allowLateSubmissions": true
+   }
+   
+   Example Response:
+   {
+     "message": "Assignment created successfully",
+     "assignment": {
+       "_id": "65f1234567890abcdef12345",
+       "week": 3,
+       "title": "React Component Development",
+       "taskDescription": "Build a responsive dashboard component using React hooks and styled-components. Include proper state management and error handling.",
+       "stack": "Front End",
+       "dueDateTime": "2026-02-15T23:59:00.000Z",
+       "allowLateSubmissions": true,
+       "createdAt": "2026-02-08T10:30:00.000Z",
+       "updatedAt": "2026-02-08T10:30:00.000Z",
+       "formattedDueDate": "15th February 2026 11:59 PM"
+     }
+   }
+
+-------------------------------------------------------------------------------
+
+2. GET ASSIGNMENTS BY WEEK AND STACK (For Students)
+   Method: GET
+   Endpoint: /assignments/week/:week
+   Authentication: Required (student token)
+   
+   URL Parameters:
+   - week (number, required)
+   
+   Example Request:
+   GET https://sotw-back-onrender.com/assignments/week/3
+   Authorization: Bearer <student_jwt_token>
+   
+   Example Response:
+   {
+     "assignments": [
+       {
+         "_id": "65f1234567890abcdef12345",
+         "week": 3,
+         "title": "React Component Development",
+         "taskDescription": "Build a responsive dashboard component...",
+         "stack": "Front End",
+         "dueDateTime": "2026-02-15T23:59:00.000Z",
+         "allowLateSubmissions": true,
+         "formattedDueDate": "15th February 2026 11:59 PM"
+       }
+     ]
+   }
+
+-------------------------------------------------------------------------------
+
+3. GET ALL ASSIGNMENTS BY WEEK (For Tutors)
+   Method: GET
+   Endpoint: /assignments/week/:week/all
+   Authentication: Not required (tutor access)
+   
+   URL Parameters:
+   - week (number, required)
+   
+   Query Parameters:
+   - stack (string, required: "Front End", "Back End", "Product Design")
+   
+   Example Request:
+   GET https://sotw-back-onrender.com/assignments/week/3/all?stack=Front End
+   
+   Example Response:
+   {
+     "assignments": [
+       {
+         "_id": "65f1234567890abcdef12345",
+         "week": 3,
+         "title": "React Component Development",
+         "taskDescription": "Build a responsive dashboard component...",
+         "stack": "Front End",
+         "dueDateTime": "2026-02-15T23:59:00.000Z",
+         "allowLateSubmissions": true,
+         "formattedDueDate": "15th February 2026 11:59 PM"
+       }
+     ]
+   }
+
+-------------------------------------------------------------------------------
+
+4. GET ALL ASSIGNMENTS (For Tutors)
+   Method: GET
+   Endpoint: /assignments/all
+   Authentication: Not required (tutor access)
+   
+   Example Request:
+   GET https://sotw-back-onrender.com/assignments/all
+   
+   Example Response:
+   {
+     "assignments": [
+       {
+         "_id": "65f1234567890abcdef12345",
+         "week": 3,
+         "title": "React Component Development",
+         "stack": "Front End",
+         "formattedDueDate": "15th February 2026 11:59 PM"
+       },
+       {
+         "_id": "65f1234567890abcdef12346",
+         "week": 2,
+         "title": "Node.js API Development",
+         "stack": "Back End",
+         "formattedDueDate": "8th February 2026 11:59 PM"
+       }
+     ]
+   }
+
+-------------------------------------------------------------------------------
+
+5. UPDATE ASSIGNMENT (Dynamic)
+   Method: PATCH
+   Endpoint: /assignments/:assignmentId
+   Authentication: Not required (tutor access)
+   
+   URL Parameters:
+   - assignmentId (string, required)
+   
+   Optional Fields (only provided fields will be updated):
+   - title (string)
+   - taskDescription (string)
+   - stack (enum: "Front End", "Back End", "Product Design")
+   - dueDate (string, format: "YYYY-MM-DD")
+   - dueTime (string, format: "HH:MM")
+   - allowLateSubmissions (boolean)
+   
+   Example Request (Update only title):
+   PATCH https://sotw-back-onrender.com/assignments/65f1234567890abcdef12345
+   Content-Type: application/json
+   
+   {
+     "title": "Advanced React Component Development"
+   }
+   
+   Example Request (Update due date only):
+   PATCH https://sotw-back-onrender.com/assignments/65f1234567890abcdef12345
+   Content-Type: application/json
+   
+   {
+     "dueDate": "2026-02-20"
+   }
+   
+   Example Response:
+   {
+     "message": "Assignment updated successfully",
+     "assignment": {
+       "_id": "65f1234567890abcdef12345",
+       "week": 3,
+       "title": "Advanced React Component Development",
+       "taskDescription": "Build a responsive dashboard component...",
+       "stack": "Front End",
+       "dueDateTime": "2026-02-20T23:59:00.000Z",
+       "allowLateSubmissions": true,
+       "formattedDueDate": "20th February 2026 11:59 PM"
+     }
+   }
+
+-------------------------------------------------------------------------------
+
+6. DELETE ASSIGNMENT
+   Method: DELETE
+   Endpoint: /assignments/:assignmentId
+   Authentication: Not required (tutor access)
+   
+   URL Parameters:
+   - assignmentId (string, required)
+   
+   Example Request:
+   DELETE https://sotw-back-onrender.com/assignments/65f1234567890abcdef12345
+   
+   Example Response:
+   {
+     "message": "Assignment and all related data deleted successfully"
+   }
+
+===============================================================================
+
+=== SUBMISSION MANAGEMENT ENDPOINTS ===
+
+7. SUBMIT ASSIGNMENT
+   Method: POST
+   Endpoint: /submissions/:assignmentId/submit
+   Authentication: Required (student token)
+   
+   URL Parameters:
+   - assignmentId (string, required)
+   
+   Required Fields:
+   - submissionLink (string, URL)
+   
+   Example Request:
+   POST https://sotw-back-onrender.com/submissions/65f1234567890abcdef12345/submit
+   Authorization: Bearer <student_jwt_token>
+   Content-Type: application/json
+   
+   {
+     "submissionLink": "https://github.com/student123/react-dashboard-project"
+   }
+   
+   Example Response (New Submission):
+   {
+     "message": "Assignment submitted successfully",
+     "submission": {
+       "_id": "65f1234567890abcdef12347",
+       "assignment": "65f1234567890abcdef12345",
+       "student": "65f1234567890abcdef12348",
+       "submissionLink": "https://github.com/student123/react-dashboard-project",
+       "submittedAt": "2026-02-10T14:30:00.000Z",
+       "isLate": false,
+       "grade": null
+     }
+   }
+   
+   Example Response (Update Existing):
+   {
+     "message": "Assignment submission updated successfully",
+     "submission": {
+       "_id": "65f1234567890abcdef12347",
+       "assignment": "65f1234567890abcdef12345",
+       "student": "65f1234567890abcdef12348",
+       "submissionLink": "https://github.com/student123/react-dashboard-project-v2",
+       "submittedAt": "2026-02-12T16:45:00.000Z",
+       "isLate": false,
+       "grade": null
+     }
+   }
+
+-------------------------------------------------------------------------------
+
+8. GET STUDENT SUBMISSIONS
+   Method: GET
+   Endpoint: /submissions/my-submissions
+   Authentication: Required (student token)
+   
+   Query Parameters:
+   - week (number, optional) - filter by specific week
+   
+   Example Request:
+   GET https://sotw-back-onrender.com/submissions/my-submissions
+   Authorization: Bearer <student_jwt_token>
+   
+   Example Request (With Week Filter):
+   GET https://sotw-back-onrender.com/submissions/my-submissions?week=3
+   Authorization: Bearer <student_jwt_token>
+   
+   Example Response:
+   {
+     "submissions": [
+       {
+         "_id": "65f1234567890abcdef12347",
+         "assignment": {
+           "_id": "65f1234567890abcdef12345",
+           "title": "React Component Development",
+           "week": 3,
+           "stack": "Front End"
+         },
+         "student": "65f1234567890abcdef12348",
+         "submissionLink": "https://github.com/student123/react-dashboard-project",
+         "submittedAt": "2026-02-10T14:30:00.000Z",
+         "isLate": false,
+         "grade": 18
+       }
+     ]
+   }
+
+-------------------------------------------------------------------------------
+
+9. GET SUBMISSION BY ID
+   Method: GET
+   Endpoint: /submissions/:submissionId
+   Authentication: Not required (tutor access)
+   
+   URL Parameters:
+   - submissionId (string, required)
+   
+   Example Request:
+   GET https://sotw-back-onrender.com/submissions/65f1234567890abcdef12347
+   
+   Example Response:
+   {
+     "submission": {
+       "_id": "65f1234567890abcdef12347",
+       "assignment": {
+         "_id": "65f1234567890abcdef12345",
+         "title": "React Component Development",
+         "week": 3,
+         "stack": "Front End",
+         "taskDescription": "Build a responsive dashboard component..."
+       },
+       "student": {
+         "_id": "65f1234567890abcdef12348",
+         "name": "John Doe",
+         "image": "https://example.com/profile.jpg",
+         "stack": "Front End"
+       },
+       "submissionLink": "https://github.com/student123/react-dashboard-project",
+       "submittedAt": "2026-02-10T14:30:00.000Z",
+       "isLate": false,
+       "grade": 18
+     }
+   }
+
+===============================================================================
+
+=== GRADING MANAGEMENT ENDPOINTS ===
+
+10. GRADE SUBMISSION
+    Method: PATCH
+    Endpoint: /grading/submission/:submissionId
+    Authentication: Not required (tutor access)
+    
+    URL Parameters:
+    - submissionId (string, required)
+    
+    Required Fields:
+    - grade (number, range: 0-20)
+    
+    Example Request:
+    PATCH https://sotw-back-onrender.com/grading/submission/65f1234567890abcdef12347
+    Content-Type: application/json
+    
+    {
+      "grade": 18
+    }
+    
+    Example Response (New Grade):
+    {
+      "message": "Assignment graded successfully",
+      "grade": 18
+    }
+    
+    Example Response (Updated Grade):
+    {
+      "message": "Grade updated successfully",
+      "grade": 20
+    }
+
+-------------------------------------------------------------------------------
+
+11. GET SUBMISSIONS BY WEEK FOR GRADING
+    Method: GET
+    Endpoint: /grading/week/:week
+    Authentication: Not required (tutor access)
+    
+    URL Parameters:
+    - week (number, required)
+    
+    Example Request:
+    GET https://sotw-back-onrender.com/grading/week/3
+    
+    Example Response:
+    {
+      "students": [
+        {
+          "student": {
+            "_id": "65f1234567890abcdef12348",
+            "name": "John Doe",
+            "image": "https://example.com/profile.jpg",
+            "stack": "Front End"
+          },
+          "assignments": [
+            {
+              "submissionId": "65f1234567890abcdef12347",
+              "assignment": {
+                "_id": "65f1234567890abcdef12345",
+                "title": "React Component Development",
+                "stack": "Front End"
+              },
+              "submissionLink": "https://github.com/student123/react-dashboard-project",
+              "submittedAt": "2026-02-10T14:30:00.000Z",
+              "isLate": false,
+              "grade": 18
+            }
+          ]
+        },
+        {
+          "student": {
+            "_id": "65f1234567890abcdef12349",
+            "name": "Jane Smith",
+            "image": "https://example.com/profile2.jpg",
+            "stack": "Front End"
+          },
+          "assignments": [
+            {
+              "submissionId": "65f1234567890abcdef12350",
+              "assignment": {
+                "_id": "65f1234567890abcdef12345",
+                "title": "React Component Development",
+                "stack": "Front End"
+              },
+              "submissionLink": "https://github.com/jane-smith/react-dashboard",
+              "submittedAt": "2026-02-11T09:15:00.000Z",
+              "isLate": false,
+              "grade": null
+            }
+          ]
+        }
+      ]
+    }
+
+-------------------------------------------------------------------------------
+
+12. GET SUBMISSIONS BY ASSIGNMENT
+    Method: GET
+    Endpoint: /grading/assignment/:assignmentId
+    Authentication: Not required (tutor access)
+    
+    URL Parameters:
+    - assignmentId (string, required)
+    
+    Example Request:
+    GET https://sotw-back-onrender.com/grading/assignment/65f1234567890abcdef12345
+    
+    Example Response:
+    {
+      "submissions": [
+        {
+          "_id": "65f1234567890abcdef12347",
+          "student": {
+            "_id": "65f1234567890abcdef12348",
+            "name": "John Doe",
+            "image": "https://example.com/profile.jpg",
+            "stack": "Front End"
+          },
+          "assignment": {
+            "_id": "65f1234567890abcdef12345",
+            "title": "React Component Development",
+            "week": 3,
+            "stack": "Front End",
+            "taskDescription": "Build a responsive dashboard component..."
+          },
+          "submissionLink": "https://github.com/student123/react-dashboard-project",
+          "submittedAt": "2026-02-10T14:30:00.000Z",
+          "isLate": false,
+          "grade": 18
+        },
+        {
+          "_id": "65f1234567890abcdef12350",
+          "student": {
+            "_id": "65f1234567890abcdef12349",
+            "name": "Jane Smith",
+            "image": "https://example.com/profile2.jpg",
+            "stack": "Front End"
+          },
+          "assignment": {
+            "_id": "65f1234567890abcdef12345",
+            "title": "React Component Development",
+            "week": 3,
+            "stack": "Front End",
+            "taskDescription": "Build a responsive dashboard component..."
+          },
+          "submissionLink": "https://github.com/jane-smith/react-dashboard",
+          "submittedAt": "2026-02-11T09:15:00.000Z",
+          "isLate": false,
+          "grade": null
+        }
+      ]
+    }
+
+===============================================================================
+
+=== VALIDATION RULES & NOTES ===
+
+Field Validations:
+- week: Must be a positive integer (min: 1)
+- grade: Must be between 0 and 20 (inclusive)
+- stack: Must be exactly one of: "Front End", "Back End", "Product Design"
+- submissionLink: Must be a valid URL format
+- dueDate: Must be in YYYY-MM-DD format
+- dueTime: Must be in HH:MM format (24-hour)
+
+Authentication:
+- Student endpoints require JWT token with role: "student"
+- Tutor endpoints generally don't require authentication (based on current setup)
+- Student stack must match assignment stack for submissions
+
+Business Rules:
+- Students can only submit to assignments matching their stack
+- Late submissions are only allowed if assignment.allowLateSubmissions = true
+- Students can resubmit (updates existing submission)
+- Deleting assignment also deletes all related submissions
+- Grades can be updated multiple times
+
+Date/Time Handling:
+- All dates stored as combined datetime in UTC
+- Formatted dates displayed as: "15th February 2026 11:59 PM"
+- Late submission calculated by comparing current time with dueDateTime
+
+Error Responses:
+- 400: Bad Request (validation errors, missing fields)
+- 401: Unauthorized (invalid/missing token)
+- 403: Forbidden (role/stack restrictions)
+- 404: Not Found (assignment/submission not found)
+- 500: Internal Server Error
+
+===============================================================================

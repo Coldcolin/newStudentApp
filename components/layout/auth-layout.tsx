@@ -65,7 +65,7 @@ export function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
           <div className="flex items-center justify-center rounded-lg">
             <Image
               src="/theCurveLogo.png"
-              alt="Curve Academy"
+              alt="Curve Africa"
               width={200}
               height={200}
             />
@@ -84,7 +84,7 @@ export function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
               <span className="text-lg font-bold text-[#08022b]">CA</span>
             </div>
             <span className="text-2xl font-semibold text-foreground">
-              Curve Academy
+              Curve Africa
             </span>
           </div>
 

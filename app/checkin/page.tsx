@@ -38,19 +38,37 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Camera, Check, X, MapPin, Loader2, ArrowLeft, FileCheck, Search } from "lucide-react";
+import {
+  Camera,
+  Check,
+  X,
+  MapPin,
+  Loader2,
+  ArrowLeft,
+  FileCheck,
+  Search,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useCurrentUser } from "@/lib/store/hooks";
+import axiosInstance, { api } from "@/lib/api/axios";
+import { toast } from "sonner";
 
 type CheckInStatus = "idle" | "camera" | "processing" | "success" | "error";
 type LocationStatus = "idle" | "requesting" | "granted" | "denied";
 
 interface AttendanceRecord {
-  id: string;
+  _id: string;
   date: string;
-  status: "Early" | "Late";
-  checkIn: string;
-  checkOut: string;
+  time: string;
+  location: string;
+  punctualityScore: number;
+  image?: {
+    url: string;
+    public_id: string;
+  };
+  userId: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface LocationData {
@@ -69,121 +87,95 @@ interface StudentAttendance {
 }
 
 interface StudentData {
-  id: string;
+  _id: string;
   name: string;
   email: string;
   avgRating: string;
   currentRating: string;
+  stack: string;
   attendance: StudentAttendance[];
   avgPunctuality: string;
 }
 
-// Mock attendance history data for students
-const attendanceHistory: AttendanceRecord[] = [
-  { id: "1", date: "October 18th 2024", status: "Early", checkIn: "9:00 am", checkOut: "5:00 pm" },
-  { id: "2", date: "October 18th 2024", status: "Late", checkIn: "9:32 am", checkOut: "5:02 pm" },
-  { id: "3", date: "October 18th 2024", status: "Early", checkIn: "9:00 am", checkOut: "5:00 pm" },
-  { id: "4", date: "October 18th 2024", status: "Early", checkIn: "9:00 am", checkOut: "5:00 pm" },
-  { id: "5", date: "October 18th 2024", status: "Late", checkIn: "9:45 am", checkOut: "5:15 pm" },
-  { id: "6", date: "October 17th 2024", status: "Early", checkIn: "9:00 am", checkOut: "5:00 pm" },
-  { id: "7", date: "October 17th 2024", status: "Early", checkIn: "9:00 am", checkOut: "5:00 pm" },
-  { id: "8", date: "October 17th 2024", status: "Late", checkIn: "9:20 am", checkOut: "5:00 pm" },
-];
+// API Response type for student attendance
+interface StudentAttendanceApiResponse {
+  data: AttendanceRecord[];
+}
 
-// Mock student data for admin view
-const studentsList: StudentData[] = [
-  {
-    id: "1",
-    name: "Chisom Ikeadighim",
-    email: "chisom@example.com",
-    avgRating: "82.5%",
-    currentRating: "96%",
-    avgPunctuality: "20%",
-    attendance: [
-      { id: "1", name: "Chisom Ikeadighim", day: "Monday", serverTime: "9:50 pm", recommendedRating: "20%" },
-      { id: "2", name: "Chisom Ikeadighim", day: "Wednesday", serverTime: "9:45 pm", recommendedRating: "20%" },
-      { id: "3", name: "Chisom Ikeadighim", day: "Friday", serverTime: "9:00 pm", recommendedRating: "20%" },
-    ],
-  },
-  {
-    id: "2",
-    name: "Francesca Agbaozo",
-    email: "francesca@example.com",
-    avgRating: "82.5%",
-    currentRating: "96%",
-    avgPunctuality: "85%",
-    attendance: [
-      { id: "1", name: "Francesca Agbaozo", day: "Monday", serverTime: "8:55 am", recommendedRating: "90%" },
-      { id: "2", name: "Francesca Agbaozo", day: "Wednesday", serverTime: "8:50 am", recommendedRating: "85%" },
-      { id: "3", name: "Francesca Agbaozo", day: "Friday", serverTime: "9:00 am", recommendedRating: "80%" },
-    ],
-  },
-  {
-    id: "3",
-    name: "David Okonkwo",
-    email: "david@example.com",
-    avgRating: "78.5%",
-    currentRating: "90%",
-    avgPunctuality: "75%",
-    attendance: [
-      { id: "1", name: "David Okonkwo", day: "Monday", serverTime: "9:10 am", recommendedRating: "70%" },
-      { id: "2", name: "David Okonkwo", day: "Wednesday", serverTime: "9:05 am", recommendedRating: "75%" },
-      { id: "3", name: "David Okonkwo", day: "Friday", serverTime: "9:00 am", recommendedRating: "80%" },
-    ],
-  },
-];
+// API Response types matching students page
+interface StudentRecord {
+  _id: string;
+  name: string;
+  email: string;
+  overallRating: number;
+  weeklyRating: number;
+  stack: string;
+}
 
-// Generate more students
-for (let i = 4; i <= 20; i++) {
-  studentsList.push({
-    id: String(i),
-    name: `Student ${i}`,
-    email: `student${i}@example.com`,
-    avgRating: "82.5%",
-    currentRating: "96%",
-    avgPunctuality: `${Math.floor(Math.random() * 40 + 60)}%`,
-    attendance: [
-      { id: "1", name: `Student ${i}`, day: "Monday", serverTime: "9:00 am", recommendedRating: "80%" },
-      { id: "2", name: `Student ${i}`, day: "Wednesday", serverTime: "9:05 am", recommendedRating: "75%" },
-      { id: "3", name: `Student ${i}`, day: "Friday", serverTime: "8:55 am", recommendedRating: "85%" },
-    ],
-  });
+interface StudentsApiResponse {
+  data: StudentRecord[];
 }
 
 const tabs = ["Front-End", "Back-End", "Product Design"];
 
 function AttendanceCard({ record }: { record: AttendanceRecord }) {
+  // Determine status based on punctuality score (assuming score >= 50 is early/on-time)
+  const status = record.punctualityScore >= 50 ? "Early" : "Late";
+  const formattedDate = new Date(record.date).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  const formattedTime = new Date(
+    `2000-01-01T${record.time}`,
+  ).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
   return (
     <Card className="border border-border shadow-sm overflow-hidden">
       <CardContent className="p-3 sm:p-4">
         <div className="flex flex-col gap-2 mb-3">
-          <Badge 
-            variant="outline" 
+          <Badge
+            variant="outline"
             className="rounded-full bg-[#ffb703]/10 text-[#08022b] border-[#ffb703] font-medium text-[10px] sm:text-xs px-2 py-0.5 w-fit truncate max-w-full"
           >
-            {record.date}
+            {formattedDate}
           </Badge>
-          <Badge 
+          <Badge
             className={`rounded-full text-[10px] sm:text-xs font-medium w-fit px-2 py-0.5 ${
-              record.status === "Early" 
-                ? "bg-[#34a853]/10 text-[#34a853] border-[#34a853]" 
+              status === "Early"
+                ? "bg-[#34a853]/10 text-[#34a853] border-[#34a853]"
                 : "bg-[#ec1c24]/10 text-[#ec1c24] border-[#ec1c24]"
             }`}
             variant="outline"
           >
-            {record.status}
+            {status}
           </Badge>
         </div>
         <div className="space-y-1 text-xs sm:text-sm">
           <p className="text-muted-foreground">
             <span className="block sm:inline">Check in Time:</span>{" "}
-            <span className="text-foreground font-medium">{record.checkIn}</span>
+            <span className="text-foreground font-medium">{formattedTime}</span>
           </p>
           <p className="text-muted-foreground">
-            <span className="block sm:inline">Check out Time:</span>{" "}
-            <span className="text-foreground font-medium">{record.checkOut}</span>
+            <span className="block sm:inline">Score:</span>{" "}
+            <span className="text-foreground font-medium">
+              {record.punctualityScore}%
+            </span>
           </p>
         </div>
+        {record.image?.url && (
+          <div className="mt-3">
+            <img
+              src={record.image.url}
+              alt="Check-in photo"
+              className="w-full h-20 object-cover rounded-md"
+            />
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -195,181 +187,115 @@ function StudentAttendanceCard({ record }: { record: StudentAttendance }) {
     <Card className="border border-border shadow-sm">
       <CardContent className="p-4 flex flex-col items-center text-center">
         <Avatar className="h-24 w-24 mb-3">
-          <AvatarImage src={`/placeholder.svg?height=96&width=96&query=professional%20${record.name}`} />
+          <AvatarImage
+            src={`/placeholder.svg?height=96&width=96&query=professional%20${record.name}`}
+          />
           <AvatarFallback className="bg-[#ffb703] text-[#08022b] text-lg">
-            {record.name.split(" ").map(n => n[0]).join("")}
+            {record.name
+              .split(" ")
+              .map((n) => n[0])
+              .join("")}
           </AvatarFallback>
         </Avatar>
         <h3 className="font-semibold text-foreground">{record.name}</h3>
         <p className="text-sm text-muted-foreground">{record.day}</p>
         <p className="text-sm text-muted-foreground">
-          Server Time in: <span className="font-medium text-foreground">{record.serverTime}</span>
+          Server Time in:{" "}
+          <span className="font-medium text-foreground">
+            {record.serverTime}
+          </span>
         </p>
         <p className="text-sm text-muted-foreground mt-1">
-          Recommended Rating: <span className="font-medium text-foreground">{record.recommendedRating}</span>
+          Recommended Rating:{" "}
+          <span className="font-medium text-foreground">
+            {record.recommendedRating}
+          </span>
         </p>
       </CardContent>
     </Card>
   );
 }
 
+// Helper function to convert API StudentRecord to StudentData
+const mapToStudentData = (student: StudentRecord): StudentData => ({
+  _id: student._id,
+  name: student.name,
+  email: student.email,
+  stack: student.stack,
+  avgRating: `${student.overallRating?.toFixed(2) || 0}%`,
+  currentRating: `${Math.round(student.weeklyRating) || 0}%`,
+  avgPunctuality: "75%",
+  attendance: [
+    {
+      id: "1",
+      name: student.name,
+      day: "Monday",
+      serverTime: "9:00 am",
+      recommendedRating: "80%",
+    },
+    {
+      id: "2",
+      name: student.name,
+      day: "Wednesday",
+      serverTime: "9:05 am",
+      recommendedRating: "75%",
+    },
+    {
+      id: "3",
+      name: student.name,
+      day: "Friday",
+      serverTime: "8:55 am",
+      recommendedRating: "85%",
+    },
+  ],
+});
+
+// Normalize stack name for comparison
+const normalizeStack = (stack: string) =>
+  stack.toLowerCase().replace(/[-\s]/g, "");
+
 // Admin Attendance View Component
 function AdminAttendanceView() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("Front-End");
-  const [selectedStudent, setSelectedStudent] = useState<StudentData | null>(null);
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [filteredStudents, setFilteredStudents] = useState<StudentData[]>(studentsList);
+  const [students, setStudents] = useState<StudentData[]>([]);
+  const [filteredStudents, setFilteredStudents] = useState<StudentData[]>([]);
 
-  // Search and filter students
+  // Fetch students from API on mount (same pattern as students page)
+  const fetchStudents = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const response =
+        await axiosInstance.get<StudentsApiResponse>("/users/students");
+      const mappedStudents = (response.data.data || []).map(mapToStudentData);
+      setStudents(mappedStudents);
+    } catch (error) {
+      console.error("Failed to fetch students:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    const timeoutId = setTimeout(async () => {
-      setIsLoading(true);
-      try {
-        // Fetch from API with search query
-        const params = new URLSearchParams({
-          q: searchQuery,
-          type: "students",
-          stack: activeTab,
-        });
-        
-        const response = await fetch(`/api/students/search?${params}`);
-        const result = await response.json();
-        
-        // Map API results to our StudentData format with attendance info
-        const studentsWithAttendance = result.data.map((student: { id: string; name: string; avgRating: string; currentRating: string }) => {
-          const existing = studentsList.find(s => s.name === student.name);
-          return existing || {
-            id: student.id,
-            name: student.name,
-            email: "",
-            avgRating: student.avgRating,
-            currentRating: student.currentRating,
-            avgPunctuality: "75%",
-            attendance: [
-              { id: "1", name: student.name, day: "Monday", serverTime: "9:00 am", recommendedRating: "80%" },
-              { id: "2", name: student.name, day: "Wednesday", serverTime: "9:05 am", recommendedRating: "75%" },
-              { id: "3", name: student.name, day: "Friday", serverTime: "8:55 am", recommendedRating: "85%" },
-            ],
-          };
-        });
-        
-        setFilteredStudents(studentsWithAttendance);
-      } catch (error) {
-        console.error("Search failed:", error);
-        // Fallback to local filtering
-        const filtered = studentsList.filter(student =>
-          student.name.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-        setFilteredStudents(filtered);
-      } finally {
-        setIsLoading(false);
-      }
-    }, 300);
+    fetchStudents();
+  }, [fetchStudents]);
 
-    return () => clearTimeout(timeoutId);
-  }, [searchQuery, activeTab]);
-
-  const handleAcknowledge = () => {
-    setShowConfirmDialog(true);
-  };
-
-  const handleConfirmAcknowledge = () => {
-    setShowConfirmDialog(false);
-    setShowSuccessDialog(true);
-  };
-
-  const handleCloseSuccess = () => {
-    setShowSuccessDialog(false);
-    setSelectedStudent(null);
-  };
-
-  if (selectedStudent) {
-    return (
-      <div className="space-y-6">
-        {/* Back button and title */}
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSelectedStudent(null)}
-            className="h-10 w-10"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <h1 className="text-2xl font-bold text-foreground">Confirm Punctuality</h1>
-        </div>
-
-        {/* Attendance Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {selectedStudent.attendance.map((record, index) => (
-            <StudentAttendanceCard key={index} record={record} />
-          ))}
-        </div>
-
-        {/* Average Score and Acknowledge Button */}
-        <div className="flex flex-col items-center gap-4 py-6">
-          <p className="text-lg font-medium text-foreground">
-            Average Punctuality Score: <span className="font-bold">{selectedStudent.avgPunctuality}</span>
-          </p>
-          <Button
-            onClick={handleAcknowledge}
-            className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] px-6"
-          >
-            <FileCheck className="mr-2 h-5 w-5" />
-            Acknowledge
-          </Button>
-        </div>
-
-        {/* Confirmation Dialog */}
-        <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Confirm Acknowledgement</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to acknowledge the punctuality record for {selectedStudent.name}? 
-                This action cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleConfirmAcknowledge}
-                className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
-              >
-                Confirm
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        {/* Success Dialog */}
-        <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
-          <DialogContent className="sm:max-w-[400px]">
-            <DialogTitle className="sr-only">Success</DialogTitle>
-            <DialogDescription className="sr-only">Punctuality acknowledgement success</DialogDescription>
-            <div className="flex flex-col items-center py-8">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#34a853]/10">
-                <Check className="h-8 w-8 text-[#34a853]" />
-              </div>
-              <h3 className="mt-4 text-xl font-semibold">Acknowledged!</h3>
-              <p className="mt-2 text-center text-muted-foreground">
-                Punctuality record for {selectedStudent.name} has been acknowledged.
-              </p>
-              <Button
-                onClick={handleCloseSuccess}
-                className="mt-6 bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
-              >
-                Continue
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-    );
-  }
+  // Filter students by active stack tab and search query (same as students page)
+  useEffect(() => {
+    const filtered = students.filter((student) => {
+      const normalizedStudentStack = normalizeStack(student.stack);
+      const normalizedActiveTab = normalizeStack(activeTab);
+      const matchesTab = normalizedStudentStack === normalizedActiveTab;
+      const matchesSearch = searchQuery
+        ? student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          student.email.toLowerCase().includes(searchQuery.toLowerCase())
+        : true;
+      return matchesTab && matchesSearch;
+    });
+    setFilteredStudents(filtered);
+  }, [students, searchQuery, activeTab]);
 
   return (
     <div className="space-y-6">
@@ -416,48 +342,65 @@ function AdminAttendanceView() {
               <Loader2 className="h-8 w-8 animate-spin text-[#ffb703]" />
             </div>
           ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-b border-gray-100 hover:bg-transparent">
-                  <TableHead className="text-xs text-muted-foreground whitespace-nowrap">Week</TableHead>
-                  <TableHead className="text-xs text-muted-foreground whitespace-nowrap">Name</TableHead>
-                  <TableHead className="text-xs text-muted-foreground whitespace-nowrap">Average Rating</TableHead>
-                  <TableHead className="text-xs text-muted-foreground whitespace-nowrap text-right">Current Rating</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredStudents.length > 0 ? (
-                  filteredStudents.map((student, index) => (
-                    <TableRow
-                      key={`${student.id}-${index}`}
-                      className="border-b border-gray-50 hover:bg-gray-50/50 cursor-pointer"
-                      onClick={() => setSelectedStudent(student)}
-                    >
-                      <TableCell className="py-3 text-sm text-muted-foreground">
-                        {19 + index}
-                      </TableCell>
-                      <TableCell className="py-3">
-                        <span className="text-sm font-medium">{student.name}</span>
-                      </TableCell>
-                      <TableCell className="py-3">
-                        <span className="text-sm font-medium text-[#ffb703]">{student.avgRating}</span>
-                      </TableCell>
-                      <TableCell className="py-3 text-right">
-                        <span className="text-sm font-medium text-[#34a853]">{student.currentRating}</span>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-gray-100 hover:bg-transparent">
+                    <TableHead className="text-xs text-muted-foreground whitespace-nowrap">
+                      Week
+                    </TableHead>
+                    <TableHead className="text-xs text-muted-foreground whitespace-nowrap">
+                      Name
+                    </TableHead>
+                    <TableHead className="text-xs text-muted-foreground whitespace-nowrap">
+                      Average Rating
+                    </TableHead>
+                    <TableHead className="text-xs text-muted-foreground whitespace-nowrap text-right">
+                      Current Rating
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredStudents.length > 0 ? (
+                    filteredStudents.map((student, index) => (
+                      <TableRow
+                        key={`${student._id}-${index}`}
+                        className="border-b border-gray-50 hover:bg-gray-50/50 cursor-pointer"
+                        onClick={() => router.push(`/checkin/${student._id}`)}
+                      >
+                        <TableCell className="py-3 text-sm text-muted-foreground">
+                          {19 + index}
+                        </TableCell>
+                        <TableCell className="py-3">
+                          <span className="text-sm font-medium">
+                            {student.name}
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-3">
+                          <span className="text-sm font-medium text-[#ffb703]">
+                            {student.avgRating}
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-3 text-right">
+                          <span className="text-sm font-medium text-[#34a853]">
+                            {student.currentRating}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell
+                        colSpan={4}
+                        className="py-8 text-center text-muted-foreground"
+                      >
+                        No students found matching your search.
                       </TableCell>
                     </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
-                      No students found matching your search.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -467,6 +410,7 @@ function AdminAttendanceView() {
 
 // Student Check-in View Component
 function StudentCheckInView() {
+  const user = useCurrentUser();
   const [checkInStatus, setCheckInStatus] = useState<CheckInStatus>("idle");
   const [locationStatus, setLocationStatus] = useState<LocationStatus>("idle");
   const [locationData, setLocationData] = useState<LocationData | null>(null);
@@ -474,7 +418,11 @@ function StudentCheckInView() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [filterMonth, setFilterMonth] = useState("all");
   const [cameraError, setCameraError] = useState<string | null>(null);
-  
+  const [attendanceHistory, setAttendanceHistory] = useState<
+    AttendanceRecord[]
+  >([]);
+  const [isLoadingAttendance, setIsLoadingAttendance] = useState(false);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -485,7 +433,7 @@ function StudentCheckInView() {
     month: "long",
     day: "numeric",
   });
-  
+
   const currentTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
@@ -495,23 +443,46 @@ function StudentCheckInView() {
   useEffect(() => {
     return () => {
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
   }, []);
 
+  // Fetch attendance history from API
+  useEffect(() => {
+    const fetchAttendanceHistory = async () => {
+      if (!user?.id) return;
+
+      setIsLoadingAttendance(true);
+      try {
+        const response = await axiosInstance.get<StudentAttendanceApiResponse>(
+          `/api/v1/studentAttendance/${user.id}`,
+        );
+        setAttendanceHistory(response.data.data || []);
+      } catch (error) {
+        console.error("Failed to fetch attendance history:", error);
+      } finally {
+        setIsLoadingAttendance(false);
+      }
+    };
+
+    fetchAttendanceHistory();
+  }, [user?.id]);
+
   const requestLocationAccess = useCallback(async () => {
     setLocationStatus("requesting");
-    
+
     try {
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
-        });
-      });
-      
+      const position = await new Promise<GeolocationPosition>(
+        (resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
+          });
+        },
+      );
+
       setLocationData({
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
@@ -527,7 +498,7 @@ function StudentCheckInView() {
   const startCamera = useCallback(async () => {
     setCameraError(null);
     setCheckInStatus("camera");
-    
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -536,53 +507,78 @@ function StudentCheckInView() {
           height: { ideal: 480 },
         },
       });
-      
+
       streamRef.current = stream;
-      
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
     } catch (error) {
       console.error("Camera error:", error);
-      setCameraError("Unable to access camera. Please ensure camera permissions are granted.");
+      setCameraError(
+        "Unable to access camera. Please ensure camera permissions are granted.",
+      );
       setCheckInStatus("error");
     }
   }, []);
 
-  const capturePhoto = useCallback(() => {
-    if (videoRef.current && canvasRef.current) {
+  const capturePhoto = useCallback(async () => {
+    if (videoRef.current && canvasRef.current && locationData) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
       const context = canvas.getContext("2d");
-      
+
       if (context) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         context.drawImage(video, 0, 0);
-        
+
         const imageData = canvas.toDataURL("image/jpeg", 0.8);
         setCapturedImage(imageData);
-        
+
         if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current.getTracks().forEach((track) => track.stop());
           streamRef.current = null;
         }
-        
+
         setCheckInStatus("processing");
-        setTimeout(() => {
+
+        try {
+          // Convert base64 to file/blob for upload
+          const base64Response = await fetch(imageData);
+          const blob = await base64Response.blob();
+          const file = new File([blob], `checkin-${Date.now()}.jpg`, {
+            type: "image/jpeg",
+          });
+
+          const formData = new FormData();
+          formData.append("latitude", locationData.latitude.toString());
+          formData.append("longitude", locationData.longitude.toString());
+          formData.append("image", file);
+
+          await api.post("api/v1/checkIn", formData, {
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
+          });
+
           setCheckInStatus("success");
           setTimeout(() => {
             setShowSuccess(true);
           }, 500);
-        }, 1500);
+        } catch (error) {
+          toast.error((error as Error).message);
+          console.error("Check-in API error:", error);
+          setCheckInStatus("error");
+        }
       }
     }
-  }, []);
+  }, [locationData]);
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
     setCheckInStatus("idle");
@@ -603,7 +599,10 @@ function StudentCheckInView() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-foreground">Check-in</h1>
         <div className="flex items-center gap-2 flex-wrap">
-          <Badge variant="outline" className="bg-[#ffb703]/10 text-[#08022b] border-[#ffb703] px-3 py-1">
+          <Badge
+            variant="outline"
+            className="bg-[#ffb703]/10 text-[#08022b] border-[#ffb703] px-3 py-1"
+          >
             {currentDate}
           </Badge>
           <Badge variant="outline" className="bg-muted px-3 py-1">
@@ -617,28 +616,34 @@ function StudentCheckInView() {
         <CardContent className="p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                locationStatus === "granted" 
-                  ? "bg-[#34a853]/10" 
-                  : locationStatus === "denied" 
-                    ? "bg-[#ec1c24]/10" 
-                    : "bg-muted"
-              }`}>
-                <MapPin className={`h-5 w-5 ${
-                  locationStatus === "granted" 
-                    ? "text-[#34a853]" 
-                    : locationStatus === "denied" 
-                      ? "text-[#ec1c24]" 
-                      : "text-muted-foreground"
-                }`} />
+              <div
+                className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                  locationStatus === "granted"
+                    ? "bg-[#34a853]/10"
+                    : locationStatus === "denied"
+                      ? "bg-[#ec1c24]/10"
+                      : "bg-muted"
+                }`}
+              >
+                <MapPin
+                  className={`h-5 w-5 ${
+                    locationStatus === "granted"
+                      ? "text-[#34a853]"
+                      : locationStatus === "denied"
+                        ? "text-[#ec1c24]"
+                        : "text-muted-foreground"
+                  }`}
+                />
               </div>
               <div>
                 <h3 className="font-medium text-foreground">Location Access</h3>
                 <p className="text-sm text-muted-foreground">
-                  {locationStatus === "idle" && "Required for check-in verification"}
+                  {locationStatus === "idle" &&
+                    "Required for check-in verification"}
                   {locationStatus === "requesting" && "Requesting access..."}
                   {locationStatus === "granted" && "Location access granted"}
-                  {locationStatus === "denied" && "Location access denied. Please enable in browser settings."}
+                  {locationStatus === "denied" &&
+                    "Location access denied. Please enable in browser settings."}
                 </p>
                 {locationData && (
                   <p className="text-xs text-muted-foreground mt-1">
@@ -647,10 +652,12 @@ function StudentCheckInView() {
                 )}
               </div>
             </div>
-            
+
             <Button
               onClick={requestLocationAccess}
-              disabled={locationStatus === "requesting" || locationStatus === "granted"}
+              disabled={
+                locationStatus === "requesting" || locationStatus === "granted"
+              }
               className={`w-full sm:w-auto ${
                 locationStatus === "granted"
                   ? "bg-[#34a853] hover:bg-[#34a853]/90"
@@ -811,7 +818,9 @@ function StudentCheckInView() {
       {/* Attendance History Section */}
       <div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-          <h2 className="text-xl font-semibold text-foreground">Attendance History</h2>
+          <h2 className="text-xl font-semibold text-foreground">
+            Attendance History
+          </h2>
           <Select value={filterMonth} onValueChange={setFilterMonth}>
             <SelectTrigger className="w-full sm:w-[140px]">
               <SelectValue placeholder="Filter" />
@@ -826,18 +835,32 @@ function StudentCheckInView() {
         </div>
 
         {/* Attendance Grid */}
-        <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
-          {attendanceHistory.map((record) => (
-            <AttendanceCard key={record.id} record={record} />
-          ))}
-        </div>
+        {isLoadingAttendance ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-[#ffb703]" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+            {attendanceHistory.length > 0 ? (
+              attendanceHistory.map((record) => (
+                <AttendanceCard key={record._id} record={record} />
+              ))
+            ) : (
+              <p className="text-muted-foreground col-span-full text-center py-8">
+                No attendance records found.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Success Dialog */}
       <Dialog open={showSuccess} onOpenChange={setShowSuccess}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogTitle className="sr-only">Check-in Success</DialogTitle>
-          <DialogDescription className="sr-only">Your attendance has been recorded</DialogDescription>
+          <DialogDescription className="sr-only">
+            Your attendance has been recorded
+          </DialogDescription>
           <div className="flex flex-col items-center py-8">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#34a853]/10">
               <Check className="h-8 w-8 text-[#34a853]" />
@@ -861,11 +884,11 @@ function StudentCheckInView() {
 
 // Main Page Component - Shows different view based on user role
 // Student Punctuality View Component - shown when reviewing a specific student from assessments
-function StudentPunctualityView({ 
-  student, 
-  onBack 
-}: { 
-  student: StudentData; 
+function StudentPunctualityView({
+  student,
+  onBack,
+}: {
+  student: StudentData;
   onBack: () => void;
 }) {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -897,20 +920,29 @@ function StudentPunctualityView({
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-2xl font-bold text-foreground">Confirm Punctuality</h1>
+        <h1 className="text-2xl font-bold text-foreground">
+          Confirm Punctuality
+        </h1>
       </div>
 
       {/* Student Info */}
       <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
         <Avatar className="h-14 w-14">
-          <AvatarImage src={`/placeholder.svg?height=56&width=56&query=student%20${student.id}`} />
+          <AvatarImage
+            src={`/placeholder.svg?height=56&width=56&query=student%20${student._id}`}
+          />
           <AvatarFallback className="bg-[#ffb703] text-lg">
-            {student.name.split(" ").map(n => n[0]).join("")}
+            {student.name
+              .split(" ")
+              .map((n) => n[0])
+              .join("")}
           </AvatarFallback>
         </Avatar>
         <div>
           <p className="font-semibold text-foreground">{student.name}</p>
-          <p className="text-sm text-muted-foreground">Average Rating: {student.avgRating}</p>
+          <p className="text-sm text-muted-foreground">
+            Average Rating: {student.avgRating}
+          </p>
         </div>
       </div>
 
@@ -924,7 +956,8 @@ function StudentPunctualityView({
       {/* Average Score and Acknowledge Button */}
       <div className="flex flex-col items-center gap-4 py-6">
         <p className="text-lg font-medium text-foreground">
-          Average Punctuality Score: <span className="font-bold">{student.avgPunctuality}</span>
+          Average Punctuality Score:{" "}
+          <span className="font-bold">{student.avgPunctuality}</span>
         </p>
         <Button
           onClick={handleAcknowledge}
@@ -941,8 +974,8 @@ function StudentPunctualityView({
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Acknowledgement</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to acknowledge the punctuality record for {student.name}? 
-              This action cannot be undone.
+              Are you sure you want to acknowledge the punctuality record for{" "}
+              {student.name}? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -961,7 +994,9 @@ function StudentPunctualityView({
       <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogTitle className="sr-only">Acknowledgement Success</DialogTitle>
-          <DialogDescription className="sr-only">Punctuality record acknowledged</DialogDescription>
+          <DialogDescription className="sr-only">
+            Punctuality record acknowledged
+          </DialogDescription>
           <div className="flex flex-col items-center py-8">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#34a853]/10">
               <Check className="h-8 w-8 text-[#34a853]" />
@@ -987,33 +1022,55 @@ export default function CheckInPage() {
   const user = useCurrentUser();
   const searchParams = useSearchParams();
   const isAdmin = user?.role === "admin";
-  
+
   // Check if we're reviewing a specific student's attendance
   const studentId = searchParams.get("studentId");
   const studentName = searchParams.get("studentName");
-  
-  // Find the student from our mock data if reviewing
-  const reviewingStudent = studentId ? studentsList.find(s => s.id === studentId) || {
-    id: studentId,
-    name: studentName ? decodeURIComponent(studentName) : "Unknown Student",
-    email: "",
-    avgRating: "80%",
-    currentRating: "85%",
-    avgPunctuality: "75%",
-    attendance: [
-      { id: "1", name: studentName || "Student", day: "Monday", serverTime: "9:00 am", recommendedRating: "80%" },
-      { id: "2", name: studentName || "Student", day: "Wednesday", serverTime: "9:15 am", recommendedRating: "70%" },
-      { id: "3", name: studentName || "Student", day: "Friday", serverTime: "8:55 am", recommendedRating: "85%" },
-    ],
-  } : null;
-  
+
+  // Create a student placeholder for reviewing from URL params
+  // In a real implementation, you might want to fetch the specific student by ID
+  const reviewingStudent = studentId
+    ? {
+        _id: studentId,
+        name: studentName ? decodeURIComponent(studentName) : "Unknown Student",
+        email: "",
+        stack: "Frontend",
+        avgRating: "80%",
+        currentRating: "85%",
+        avgPunctuality: "75%",
+        attendance: [
+          {
+            id: "1",
+            name: studentName || "Student",
+            day: "Monday",
+            serverTime: "9:00 am",
+            recommendedRating: "80%",
+          },
+          {
+            id: "2",
+            name: studentName || "Student",
+            day: "Wednesday",
+            serverTime: "9:15 am",
+            recommendedRating: "70%",
+          },
+          {
+            id: "3",
+            name: studentName || "Student",
+            day: "Friday",
+            serverTime: "8:55 am",
+            recommendedRating: "85%",
+          },
+        ],
+      }
+    : null;
+
   return (
     <DashboardLayout title="Attendance">
       {isAdmin ? (
         reviewingStudent ? (
-          <StudentPunctualityView 
-            student={reviewingStudent} 
-            onBack={() => window.history.back()} 
+          <StudentPunctualityView
+            student={reviewingStudent}
+            onBack={() => window.history.back()}
           />
         ) : (
           <AdminAttendanceView />

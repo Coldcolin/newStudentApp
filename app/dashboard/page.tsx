@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Users, GraduationCap, Leaf } from "lucide-react";
+import axiosInstance from "@/lib/api/axios";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Table,
@@ -47,100 +49,178 @@ const studentsOfWeek = [
   },
 ];
 
-// Stats data
-const stats = [
+// Stats config (icons and colors)
+const statsConfig = [
   {
     label: "Students",
-    value: 51,
+    key: "students",
     icon: GraduationCap,
     iconColor: "text-[#ffb703]",
     iconBg: "bg-[#ffb703]/10",
   },
   {
     label: "Staffs",
-    value: 7,
+    key: "staffs",
     icon: Users,
     iconColor: "text-[#219ebc]",
     iconBg: "bg-[#219ebc]/10",
   },
   {
     label: "Alumnis",
-    value: 57,
+    key: "alumnis",
     icon: Leaf,
     iconColor: "text-[#34a853]",
     iconBg: "bg-[#34a853]/10",
   },
 ];
 
-// History data - mobile version shows different columns
-const historyData = [
-  {
-    id: 19,
-    name: "Francesca Agbaozo",
-    avgRating: "82.5%",
-    currentRating: "96%",
-  },
-  {
-    id: 19,
-    name: "Francesca Agbaozo",
-    avgRating: "82.5%",
-    currentRating: "96%",
-  },
-  {
-    id: 19,
-    name: "Francesca Agbaozo",
-    avgRating: "82.5%",
-    currentRating: "96%",
-  },
-  {
-    id: 19,
-    name: "Francesca Agbaozo",
-    avgRating: "82.5%",
-    currentRating: "90%",
-  },
-  {
-    id: 19,
-    name: "Francesca Agbaozo",
-    avgRating: "82.5%",
-    currentRating: "96%",
-  },
-  {
-    id: 19,
-    name: "Francesca Agbaozo",
-    avgRating: "82.5%",
-    currentRating: "96%",
-  },
-  {
-    id: 19,
-    name: "Francesca Agbaozo",
-    avgRating: "82.5%",
-    currentRating: "96%",
-  },
-  {
-    id: 19,
-    name: "Francesca Agbaozo",
-    avgRating: "82.5%",
-    currentRating: "96%",
-  },
-  {
-    id: 19,
-    name: "Francesca Agbaozo",
-    avgRating: "82.5%",
-    currentRating: "96%",
-  },
-  {
-    id: 19,
-    name: "Francesca Agbaozo",
-    avgRating: "82.5%",
-    currentRating: "96%",
-  },
-];
-
 const tabs = ["Front-End", "Back-End", "Product Design"];
+
+interface HistoryItem {
+  week: number;
+  name: string;
+  overallRating: string;
+  weeklyRating: string;
+}
 
 export default function DashboardPage() {
   const user = useCurrentUser();
   const [activeTab, setActiveTab] = useState("Front-End");
+  const [studentsOfWeekData, setStudentsOfWeekData] = useState<
+    typeof studentsOfWeek
+  >([]);
+  const [loading, setLoading] = useState(true);
+  const [statsData, setStatsData] = useState({
+    students: 0,
+    staffs: 0,
+    alumnis: 0,
+  });
+  const [historyData, setHistoryData] = useState<HistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyCache, setHistoryCache] = useState<
+    Record<string, HistoryItem[]>
+  >({});
+
+  const getDashboardTitle = () => {
+    return `Hi ${user?.fullName || ""}`;
+  };
+
+  const getStudentoftheWeekInfo = async () => {
+    try {
+      setLoading(true);
+      const [frontendRes, backendRes, productRes] = await Promise.all([
+        axiosInstance.get("/SOW/student"),
+        axiosInstance.get("/BSOW/student"),
+        axiosInstance.get("/PSOW/student"),
+      ]);
+
+      const fetchedData = [
+        {
+          id: frontendRes.data?.data?.student?._id || "1",
+          name: frontendRes.data?.data?.student?.name || " ",
+          role: "Front-End Trainee",
+          avatar:
+            frontendRes.data?.data?.student?.image ||
+            "/placeholder.svg?height=200&width=200&query=african%20woman%20professional",
+          bgColor: "bg-[#dbeafe]",
+          cardShadow: "shadow-[0_10px_30px_rgba(0,0,0,0.17)]",
+        },
+        {
+          id: backendRes.data?.data?.student?._id || "2",
+          name: backendRes.data?.data?.student?.name || "Vivian Miles",
+          role: "Back-End Trainee",
+          avatar:
+            backendRes.data?.data?.student?.image ||
+            "/placeholder.svg?height=200&width=200&query=african%20man%20science%20shirt",
+          bgColor: "bg-[#f5e6d3]",
+          cardShadow: "shadow-[0_10px_30px_rgba(0,0,0,0.17)]",
+        },
+        {
+          id: productRes.data?.data?.student?._id || "3",
+          name: productRes.data?.data?.student?.name || "Frank Nige",
+          role: "Product Design Trainee",
+          avatar:
+            productRes.data?.data?.student?.image ||
+            "/placeholder.svg?height=200&width=200&query=african%20man%20casual",
+          bgColor: "bg-[#fef9c3]",
+          cardShadow: "shadow-[0_10px_30px_rgba(0,0,0,0.17)]",
+        },
+      ];
+
+      setStudentsOfWeekData(fetchedData);
+    } catch (error) {
+      console.error("Error fetching students of the week:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    getStudentoftheWeekInfo();
+    getDashboardStats();
+  }, []);
+
+  useEffect(() => {
+    fetchHistoryData(activeTab);
+  }, [activeTab]);
+
+  const fetchHistoryData = async (tab: string) => {
+    if (historyCache[tab]) {
+      setHistoryData(historyCache[tab]);
+      return;
+    }
+
+    try {
+      setHistoryLoading(true);
+      let endpoint = "";
+      switch (tab) {
+        case "Front-End":
+          endpoint = "/SOW/all";
+          break;
+        case "Back-End":
+          endpoint = "/BSOW/all";
+          break;
+        case "Product Design":
+          endpoint = "/PSOW/all";
+          break;
+        default:
+          endpoint = "/SOW/all";
+      }
+
+      const response = await axiosInstance.get(endpoint);
+      const data = response.data?.data || [];
+
+      const formattedData = data.map((item: any) => ({
+        week: item.week || item._id || 0,
+        name: item.student?.name || "Unknown",
+        overallRating: item.student?.overallRating || "0%",
+        weeklyRating: item.student?.weeklyRating || "0%",
+      }));
+
+      setHistoryCache((prev) => ({ ...prev, [tab]: formattedData }));
+      setHistoryData(formattedData);
+    } catch (error) {
+      console.error("Error fetching history data:", error);
+      setHistoryData([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const getDashboardStats = async () => {
+    try {
+      const response = await axiosInstance.get("/users/dashboard/stats");
+      const data = response.data?.data || response.data || {};
+      console.log("Dashboard stats response:", data);
+      setStatsData({
+        students: data.students || 0,
+        staffs: data.staffs || 0,
+        alumnis: data.alumnis || 0,
+      });
+    } catch (error) {
+      console.error("Error fetching dashboard stats:", error);
+    }
+  };
 
   return (
     <DashboardLayout title="Dashboard">
@@ -148,7 +228,7 @@ export default function DashboardPage() {
         {/* Welcome Section */}
         <div>
           <h1 className="text-3xl font-bold text-[#1a365d]">
-            Hi {user?.firstName || "Helen"}
+            Hi {user?.fullName || ""}
           </h1>
           <p className="mt-1 text-muted-foreground">
             {"It's week 5 at The Curve Africa"}
@@ -165,65 +245,99 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-6 lg:flex-row">
             {/* Student Cards */}
             <div className="flex flex-col gap-6 md:flex-row md:flex-wrap md:gap-10 lg:flex-1">
-              {studentsOfWeek.map((student, index) => (
-                <Link
-                  key={`${student.id}-${index}`}
-                  href={`/students/${student.id}`}
-                  className="group flex-1"
-                >
-                  <Card
-                    className={`border-none ${student.bgColor} ${student.cardShadow} transition-shadow hover:shadow-lg rounded-2xl`}
+              {loading ? (
+                // Loading skeletons
+                <>
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex-1">
+                      <Card className="border-none bg-gray-100 rounded-2xl">
+                        <CardContent className="flex flex-col items-center p-5">
+                          <Skeleton className="h-24 w-24 rounded-full md:h-28 md:w-28 bg-neutral-200" />
+                          <Skeleton className="mt-3 h-5 w-32 bg-neutral-200" />
+                          <Skeleton className="mt-1 h-4 w-24 bg-neutral-200" />
+                        </CardContent>
+                      </Card>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                studentsOfWeekData.map((student, index) => (
+                  <Link
+                    key={`${student.id}-${index}`}
+                    href={`/students/${student.id}`}
+                    className="group flex-1"
                   >
-                    <CardContent className="flex flex-col items-center p-5">
-                      <div className="rounded-full p-0 bg-white/50">
-                        <Avatar className="h-24 w-24 ring-0 md:h-28 md:w-28">
-                          <AvatarImage
-                            src={student.avatar}
-                            alt={student.name}
-                            className="object-cover"
-                          />
-                          <AvatarFallback className="bg-[#ffb703] text-xl text-[#08022b]">
-                            {student.name
-                              .split(" ")
-                              .map((n) => n[0])
-                              .join("")}
-                          </AvatarFallback>
-                        </Avatar>
-                      </div>
-                      <h3 className="mt-3 text-center font-semibold text-foreground text-sm md:text-base">
-                        {student.name}
-                      </h3>
-                      <p className="text-xs text-muted-foreground">
-                        {student.role}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
+                    <Card
+                      className={`border-none ${student.bgColor} ${student.cardShadow} transition-shadow hover:shadow-lg rounded-2xl`}
+                    >
+                      <CardContent className="flex flex-col items-center p-5">
+                        <div className="rounded-full p-0 bg-white/50">
+                          <Avatar className="h-24 w-24 ring-0 md:h-28 md:w-28">
+                            <AvatarImage
+                              src={student.avatar}
+                              alt={student.name}
+                              className="object-cover"
+                            />
+                            <AvatarFallback className="bg-[#ffb703] text-xl text-[#08022b]">
+                              {student.name
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")}
+                            </AvatarFallback>
+                          </Avatar>
+                        </div>
+                        <h3 className="mt-3 text-center font-semibold text-foreground text-sm md:text-base">
+                          {student.name}
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          {student.role}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ))
+              )}
             </div>
 
             {/* Stats Cards - Stack on mobile, vertical on desktop */}
             <div className="flex flex-col gap-4 lg:w-[180px]">
-              {stats.map((stat) => (
-                <Card
-                  key={stat.label}
-                  className="border-none bg-white shadow-sm"
-                >
-                  <CardContent className="flex items-center justify-center gap-4 p-4 md:justify-start">
-                    <div className={`rounded-lg p-2 ${stat.iconBg}`}>
-                      <stat.icon className={`h-6 w-6 ${stat.iconColor}`} />
-                    </div>
-                    <div className="text-center md:text-left">
-                      <p className="text-2xl font-bold text-foreground">
-                        {stat.value}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {stat.label}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+              {loading ? (
+                // Loading skeletons for stats
+                <>
+                  {[1, 2, 3].map((i) => (
+                    <Card key={i} className="border-none bg-white shadow-sm">
+                      <CardContent className="flex items-center justify-center gap-4 p-4 md:justify-start">
+                        <Skeleton className="h-10 w-10 rounded-lg bg-neutral-200" />
+                        <div className="text-center md:text-left">
+                          <Skeleton className="h-7 w-12 bg-neutral-200" />
+                          <Skeleton className="mt-1 h-4 w-16 bg-neutral-200" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </>
+              ) : (
+                statsConfig.map((stat) => (
+                  <Card
+                    key={stat.label}
+                    className="border-none bg-white shadow-sm"
+                  >
+                    <CardContent className="flex items-center justify-center gap-4 p-4 md:justify-start">
+                      <div className={`rounded-lg p-2 ${stat.iconBg}`}>
+                        <stat.icon className={`h-6 w-6 ${stat.iconColor}`} />
+                      </div>
+                      <div className="text-center md:text-left">
+                        <p className="text-2xl font-bold text-foreground">
+                          {statsData[stat.key as keyof typeof statsData]}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {stat.label}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -272,29 +386,57 @@ export default function DashboardPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {historyData.map((row, index) => (
-                    <TableRow
-                      key={index}
-                      className="border-b border-gray-50 hover:bg-gray-50/50"
-                    >
-                      <TableCell className="py-3 text-sm text-muted-foreground">
-                        {row.id}
-                      </TableCell>
-                      <TableCell className="py-3">
-                        <div className="text-sm font-medium">{row.name}</div>
-                      </TableCell>
-                      <TableCell className="py-3">
-                        <span className="text-sm font-medium text-[#ffb703]">
-                          {row.avgRating}
-                        </span>
-                      </TableCell>
-                      <TableCell className="py-3 text-right">
-                        <span className="text-sm font-medium text-[#34a853]">
-                          {row.currentRating}
-                        </span>
+                  {historyLoading ? (
+                    Array.from({ length: 5 }).map((_, index) => (
+                      <TableRow key={index} className="border-b border-gray-50">
+                        <TableCell className="py-3">
+                          <Skeleton className="h-4 w-8 bg-neutral-200" />
+                        </TableCell>
+                        <TableCell className="py-3">
+                          <Skeleton className="h-4 w-32 bg-neutral-200" />
+                        </TableCell>
+                        <TableCell className="py-3">
+                          <Skeleton className="h-4 w-12 bg-neutral-200" />
+                        </TableCell>
+                        <TableCell className="py-3 text-right">
+                          <Skeleton className="h-4 w-12 bg-neutral-200 ml-auto" />
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : historyData.length > 0 ? (
+                    historyData.map((row, index) => (
+                      <TableRow
+                        key={index}
+                        className="border-b border-gray-50 hover:bg-gray-50/50"
+                      >
+                        <TableCell className="py-3 text-sm text-muted-foreground">
+                          {row.week}
+                        </TableCell>
+                        <TableCell className="py-3">
+                          <div className="text-sm font-medium">{row.name}</div>
+                        </TableCell>
+                        <TableCell className="py-3">
+                          <span className="text-sm font-medium text-[#ffb703]">
+                            {Number(row.overallRating).toFixed(2)}%
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-3 text-right">
+                          <span className="text-sm font-medium text-[#34a853]">
+                            {row.weeklyRating}%
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell
+                        colSpan={4}
+                        className="py-8 text-center text-sm text-muted-foreground"
+                      >
+                        No history data available
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )}
                 </TableBody>
               </Table>
             </CardContent>

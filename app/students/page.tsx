@@ -15,61 +15,78 @@ import {
 } from "@/components/ui/table";
 import Link from "next/link";
 import { useCurrentUser } from "@/lib/store/hooks";
+import axiosInstance, { api } from "@/lib/api/axios";
 
 // Types for different views
 type ViewType = "students" | "alumni" | "staffs";
 
 interface StudentRecord {
-  id: string;
+  _id: string;
   name: string;
   email: string;
-  avgRating: string;
-  currentRating: string;
+  overallRating: number;
+  weeklyRating: number;
   stack: string;
 }
 
+interface StudentsApiResponse {
+  data: StudentRecord[];
+}
+
 interface StaffRecord {
-  id: string;
+  _id: string;
   name: string;
   email: string;
   role: string;
 }
 
-const tabs = ["Front-End", "Back-End", "Product Design"];
+const tabs = ["Frontend", "Backend", "Product Design"];
 
 export default function StudentsPage() {
   const user = useCurrentUser();
-  const [activeTab, setActiveTab] = useState("Front-End");
+  const [activeTab, setActiveTab] = useState("Frontend");
   const [currentView, setCurrentView] = useState<ViewType>("students");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQueries, setSearchQueries] = useState<Record<ViewType, string>>({
+    students: "",
+    alumni: "",
+    staffs: "",
+  });
+
+  const searchQuery = searchQueries[currentView];
   const [isLoading, setIsLoading] = useState(false);
   const [studentData, setStudentData] = useState<StudentRecord[]>([]);
+  const [alumniData, setAlumniData] = useState<StudentRecord[]>([]);
   const [staffData, setStaffData] = useState<StaffRecord[]>([]);
 
-  // Fetch data from API
+  // Fetch data from API based on current view
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const params = new URLSearchParams({
-        q: searchQuery,
-        type: currentView,
-        stack: currentView !== "staffs" ? activeTab : "all",
-      });
-      
-      const response = await fetch(`/api/students/search?${params}`);
-      const result = await response.json();
-      
-      if (currentView === "staffs") {
-        setStaffData(result.data);
-      } else {
-        setStudentData(result.data);
+      if (currentView === "students") {
+        const response = await axiosInstance.get<StudentsApiResponse>(
+          "/users/students",
+          // { withCredentials: false },
+        );
+        setStudentData(response.data.data || []);
+      } else if (currentView === "alumni") {
+        const response = await axiosInstance.get<StudentsApiResponse>(
+          "/users/alumnis",
+          // { withCredentials: false },
+        );
+        setAlumniData(response.data.data || []);
+      } else if (currentView === "staffs") {
+        const response = await axiosInstance.get<{ data: StaffRecord[] }>(
+          "/users/staffs",
+          // { withCredentials: false },
+        );
+        setStaffData(response.data.data || []);
       }
     } catch (error) {
       console.error("Failed to fetch data:", error);
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, currentView, activeTab]);
+  }, [currentView]);
 
   // Debounced search
   useEffect(() => {
@@ -80,10 +97,39 @@ export default function StudentsPage() {
     return () => clearTimeout(timeoutId);
   }, [fetchData]);
 
-  // Reset search when changing view
-  useEffect(() => {
-    setSearchQuery("");
-  }, [currentView]);
+  // Update search query for current view
+  const setSearchQuery = (query: string) => {
+    setSearchQueries((prev) => ({
+      ...prev,
+      [currentView]: query,
+    }));
+  };
+
+  // Filter students/alumni by active stack tab and search query
+  const normalizeStack = (stack: string) =>
+    stack.toLowerCase().replace(/[-\s]/g, "");
+
+  const currentData = currentView === "alumni" ? alumniData : studentData;
+  const filteredStudentData = currentData.filter((student) => {
+    const normalizedStudentStack = normalizeStack(student.stack);
+    const normalizedActiveTab = normalizeStack(activeTab);
+    const matchesTab = normalizedStudentStack === normalizedActiveTab;
+    const matchesSearch = searchQuery
+      ? student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        student.email.toLowerCase().includes(searchQuery.toLowerCase())
+      : true;
+    return matchesTab && matchesSearch;
+  });
+
+  // Filter staff by search query
+  const filteredStaffData = staffData.filter((staff) => {
+    if (!searchQuery) return true;
+    return (
+      staff.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      staff.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      staff.role.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  });
 
   const getViewTitle = () => {
     switch (currentView) {
@@ -104,7 +150,7 @@ export default function StudentsPage() {
         {/* Greeting Header */}
         <div>
           <h1 className="text-2xl font-bold text-foreground md:text-3xl">
-            Hi {user?.firstName || "Helen"}
+            Hi {user?.fullName}
           </h1>
           <p className="text-muted-foreground">
             {"It's week 5 at The Curve Africa"}
@@ -113,10 +159,15 @@ export default function StudentsPage() {
 
         {/* Page Title with Back Arrow */}
         <div className="flex items-center gap-2">
-          <Link href="/dashboard" className="text-muted-foreground hover:text-foreground">
+          <Link
+            href="/dashboard"
+            className="text-muted-foreground hover:text-foreground"
+          >
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          <h2 className="text-lg font-semibold text-foreground">{getViewTitle()}</h2>
+          <h2 className="text-lg font-semibold text-foreground">
+            {getViewTitle()}
+          </h2>
         </div>
 
         {/* View Selector - Small tabs/links to switch between views */}
@@ -180,96 +231,102 @@ export default function StudentsPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-[#ffb703]" />
               </div>
             ) : (
-            <div className="overflow-x-auto">
-              {currentView === "staffs" ? (
-                // Staff Table
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-b border-gray-100 hover:bg-transparent">
-                      <TableHead className="text-xs text-muted-foreground font-medium whitespace-nowrap py-4 px-4">
-                        Name
-                      </TableHead>
-                      <TableHead className="text-xs text-muted-foreground font-medium whitespace-nowrap py-4">
-                        Email address
-                      </TableHead>
-                      <TableHead className="text-xs text-muted-foreground font-medium whitespace-nowrap py-4">
-                        Role
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {staffData.map((staff, index) => (
-                      <TableRow
-                        key={index}
-                        className="border-b border-gray-50 hover:bg-gray-50/50"
-                      >
-                        <TableCell className="py-4 px-4">
-                          <span className="text-sm font-medium">{staff.name}</span>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <span className="text-sm text-[#219ebc]">{staff.email}</span>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <span className="text-sm text-muted-foreground">{staff.role}</span>
-                        </TableCell>
+              <div className="overflow-x-auto">
+                {currentView === "staffs" ? (
+                  // Staff Table
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-b border-gray-100 hover:bg-transparent">
+                        <TableHead className="text-xs text-muted-foreground font-medium whitespace-nowrap py-4 px-4">
+                          Name
+                        </TableHead>
+                        <TableHead className="text-xs text-muted-foreground font-medium whitespace-nowrap py-4">
+                          Email address
+                        </TableHead>
+                        <TableHead className="text-xs text-muted-foreground font-medium whitespace-nowrap py-4">
+                          Role
+                        </TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                // Students/Alumni Table
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-b border-gray-100 hover:bg-transparent">
-                      <TableHead className="w-[60px] text-xs text-muted-foreground font-medium whitespace-nowrap py-4 px-4">
-                        Week
-                      </TableHead>
-                      <TableHead className="text-xs text-muted-foreground font-medium whitespace-nowrap py-4">
-                        Name
-                      </TableHead>
-                      <TableHead className="text-xs text-muted-foreground font-medium whitespace-nowrap py-4">
-                        Average Rating
-                      </TableHead>
-                      <TableHead className="text-xs text-muted-foreground font-medium whitespace-nowrap py-4 text-right pr-4">
-                        Current Rating
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {studentData.map((student, index) => (
-                      <TableRow
-                        key={index}
-                        className="border-b border-gray-50 hover:bg-gray-50/50"
-                      >
-                        <TableCell className="py-4 px-4 text-sm text-muted-foreground">
-                          {student.id}
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <Link 
-                            href={`/students/${student.id}`}
-                            className="text-sm font-medium hover:text-[#ffb703] transition-colors"
-                          >
-                            {student.name}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <span className="text-sm font-medium text-[#ffb703]">
-                            {student.avgRating}
-                          </span>
-                        </TableCell>
-                        <TableCell className="py-4 text-right pr-4">
-                          {student.currentRating && (
-                            <span className="text-sm font-medium text-[#34a853]">
-                              {student.currentRating}
+                    </TableHeader>
+                    <TableBody>
+                      {filteredStaffData.map((staff, index) => (
+                        <TableRow
+                          key={index}
+                          className="border-b border-gray-50 hover:bg-gray-50/50"
+                        >
+                          <TableCell className="py-4 px-4">
+                            <span className="text-sm font-medium">
+                              {staff.name}
                             </span>
-                          )}
-                        </TableCell>
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <span className="text-sm text-[#219ebc]">
+                              {staff.email}
+                            </span>
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <span className="text-sm text-muted-foreground">
+                              {staff.role}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  // Students/Alumni Table
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-b border-gray-100 hover:bg-transparent">
+                        <TableHead className="w-[60px] text-xs text-muted-foreground font-medium whitespace-nowrap py-4 px-4">
+                          S/N
+                        </TableHead>
+                        <TableHead className="text-xs text-muted-foreground font-medium whitespace-nowrap py-4">
+                          Name
+                        </TableHead>
+                        <TableHead className="text-xs text-muted-foreground font-medium whitespace-nowrap py-4">
+                          Average Rating
+                        </TableHead>
+                        <TableHead className="text-xs text-muted-foreground font-medium whitespace-nowrap py-4 text-right pr-4">
+                          Current Rating
+                        </TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </div>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredStudentData.map((student, index) => (
+                        <TableRow
+                          key={index}
+                          className="border-b border-gray-50 hover:bg-gray-50/50"
+                        >
+                          <TableCell className="py-4 px-4 text-sm text-muted-foreground">
+                            {index + 1}
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <Link
+                              href={`/students/${student._id}`}
+                              className="text-sm font-medium hover:text-[#ffb703] transition-colors"
+                            >
+                              {student.name}
+                            </Link>
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <span className="text-sm font-medium text-[#ffb703]">
+                              {student?.overallRating?.toFixed(2) || 0}
+                            </span>
+                          </TableCell>
+                          <TableCell className="py-4 text-right pr-4">
+                            {student.weeklyRating && (
+                              <span className="text-sm font-medium text-[#34a853]">
+                                {Math.round(student.weeklyRating) || 0}
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>

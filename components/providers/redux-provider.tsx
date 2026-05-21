@@ -2,8 +2,9 @@
 
 import { useRef, useEffect } from "react";
 import { Provider } from "react-redux";
+import { persistStore } from "redux-persist";
 import { PersistGate } from "redux-persist/integration/react";
-import { store, persistor, makeStore, AppStore } from "@/lib/store";
+import { makeStore, AppStore } from "@/lib/store";
 import { setAuthHelpers } from "@/lib/api/axios";
 
 interface ReduxProviderProps {
@@ -11,26 +12,30 @@ interface ReduxProviderProps {
 }
 
 export function ReduxProvider({ children }: ReduxProviderProps) {
-  const storeRef = useRef<AppStore>();
+  const storeRef = useRef<AppStore | null>(null);
+  const persistorRef = useRef<ReturnType<typeof persistStore> | null>(null);
 
   if (!storeRef.current) {
     // Create the store instance the first time this renders
     storeRef.current = makeStore();
+    // Create persistor from the same store instance
+    persistorRef.current = persistStore(storeRef.current);
   }
 
-  const currentStore = storeRef.current || store;
+  const currentStore = storeRef.current;
+  const currentPersistor = persistorRef.current!;
 
-  // Set up auth helpers for axios - use action type directly to avoid circular import
+  // Set up auth helpers for axios
   useEffect(() => {
     setAuthHelpers(
       () => currentStore.getState().auth.token,
-      () => currentStore.dispatch({ type: "auth/clearCredentials" })
+      () => currentStore.dispatch({ type: "auth/clearCredentials" }),
     );
   }, [currentStore]);
 
   return (
     <Provider store={currentStore}>
-      <PersistGate loading={<LoadingScreen />} persistor={persistor}>
+      <PersistGate loading={<LoadingScreen />} persistor={currentPersistor}>
         {children}
       </PersistGate>
     </Provider>

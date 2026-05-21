@@ -4,10 +4,14 @@ import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 export interface User {
   id: string;
   email: string;
-  firstName: string;
-  lastName: string;
+  fullName: string;
   role: "admin" | "teacher" | "student";
   avatar?: string;
+  stack?: string;
+  bio?: string;
+  phone?: string;
+  firstName?: string;
+  lastName?: string;
 }
 
 export interface AuthState {
@@ -29,25 +33,42 @@ const initialState: AuthState = {
   error: null,
 };
 
+// Initialize auth from localStorage/sessionStorage
+export const initializeAuth = createAsyncThunk("auth/initialize", async () => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  // Get token from storage (localStorage takes precedence)
+  const token =
+    localStorage.getItem("token") || sessionStorage.getItem("token");
+
+  if (!token) {
+    return null;
+  }
+
+  // Return token to be set in state
+  return { token };
+});
+
 // Async thunks - These are placeholder thunks for demonstration
 // In production, import authService dynamically or use RTK Query
 export const loginUser = createAsyncThunk(
   "auth/login",
   async (
     credentials: { email: string; password: string },
-    { rejectWithValue }
+    { rejectWithValue },
   ) => {
     try {
       // Simulated API call - replace with actual authService call
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      
+
       // Demo response
       return {
         user: {
           id: "1",
           email: credentials.email,
-          firstName: "Demo",
-          lastName: "User",
+          fullName: "Demo User",
           role: "admin" as const,
         },
         token: "demo-token",
@@ -59,7 +80,7 @@ export const loginUser = createAsyncThunk(
       }
       return rejectWithValue("Login failed");
     }
-  }
+  },
 );
 
 export const registerUser = createAsyncThunk(
@@ -68,22 +89,21 @@ export const registerUser = createAsyncThunk(
     userData: {
       email: string;
       password: string;
-      firstName: string;
-      lastName: string;
+      fullName: string;
+      // lastName: string;
       role: "student" | "teacher";
     },
-    { rejectWithValue }
+    { rejectWithValue },
   ) => {
     try {
       // Simulated API call
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      
+
       return {
         user: {
           id: "1",
           email: userData.email,
-          firstName: userData.firstName,
-          lastName: userData.lastName,
+          fullName: userData.fullName,
           role: userData.role as "admin" | "teacher" | "student",
         },
         token: "demo-token",
@@ -95,7 +115,7 @@ export const registerUser = createAsyncThunk(
       }
       return rejectWithValue("Registration failed");
     }
-  }
+  },
 );
 
 export const logoutUser = createAsyncThunk("auth/logout", async () => {
@@ -119,7 +139,7 @@ export const refreshAccessToken = createAsyncThunk(
       }
       return rejectWithValue("Token refresh failed");
     }
-  }
+  },
 );
 
 // Auth slice
@@ -130,9 +150,16 @@ const authSlice = createSlice({
     clearError: (state) => {
       state.error = null;
     },
+    setLoading: (state, action: PayloadAction<boolean>) => {
+      state.isLoading = action.payload;
+    },
     setCredentials: (
       state,
-      action: PayloadAction<{ user: User; token: string; refreshToken: string }>
+      action: PayloadAction<{
+        user: User;
+        token: string;
+        refreshToken: string;
+      }>,
     ) => {
       state.user = action.payload.user;
       state.token = action.payload.token;
@@ -204,10 +231,23 @@ const authSlice = createSlice({
         state.token = null;
         state.refreshToken = null;
         state.isAuthenticated = false;
+      })
+      // Initialize auth from storage
+      .addCase(initializeAuth.fulfilled, (state, action) => {
+        if (action.payload?.token) {
+          state.token = action.payload.token;
+          state.refreshToken = action.payload.token;
+          state.isAuthenticated = true;
+        }
       });
   },
 });
 
-export const { clearError, setCredentials, clearCredentials, updateUser } =
-  authSlice.actions;
+export const {
+  clearError,
+  setLoading,
+  setCredentials,
+  clearCredentials,
+  updateUser,
+} = authSlice.actions;
 export default authSlice.reducer;

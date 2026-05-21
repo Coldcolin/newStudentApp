@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Trophy, Medal, Award, TrendingUp, Users } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Trophy, Medal, Award, TrendingUp, Users, Loader2 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -15,136 +15,43 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useCurrentUser } from "@/lib/store/hooks";
+import axiosInstance from "@/lib/api/axios";
 
-// Mock student rankings data
-const rankingsData = [
-  {
-    id: "1",
-    rank: 1,
-    name: "Amanda Chen",
-    avatar: "/placeholder.svg?height=64&width=64&query=student%20amanda",
-    stack: "Front-End",
-    overallScore: 96,
-    tasksCompleted: 45,
-    attendance: 98,
-    punctuality: 95,
-    assignments: 92,
-    classTasks: 94,
-    personalDefence: 90,
-  },
-  {
-    id: "2",
-    rank: 2,
-    name: "Marcus Johnson",
-    avatar: "/placeholder.svg?height=64&width=64&query=student%20marcus",
-    stack: "Back-End",
-    overallScore: 94,
-    tasksCompleted: 43,
-    attendance: 96,
-    punctuality: 98,
-    assignments: 90,
-    classTasks: 92,
-    personalDefence: 88,
-  },
-  {
-    id: "3",
-    rank: 3,
-    name: "Sarah Williams",
-    avatar: "/placeholder.svg?height=64&width=64&query=student%20sarah",
-    stack: "Product Design",
-    overallScore: 92,
-    tasksCompleted: 42,
-    attendance: 94,
-    punctuality: 96,
-    assignments: 88,
-    classTasks: 90,
-    personalDefence: 94,
-  },
-  {
-    id: "4",
-    rank: 4,
-    name: "David Brown",
-    avatar: "/placeholder.svg?height=64&width=64&query=student%20david",
-    stack: "Front-End",
-    overallScore: 90,
-    tasksCompleted: 40,
-    attendance: 92,
-    punctuality: 94,
-    assignments: 86,
-    classTasks: 88,
-    personalDefence: 92,
-  },
-  {
-    id: "5",
-    rank: 5,
-    name: "Emily Davis",
-    avatar: "/placeholder.svg?height=64&width=64&query=student%20emily",
-    stack: "Back-End",
-    overallScore: 88,
-    tasksCompleted: 38,
-    attendance: 90,
-    punctuality: 92,
-    assignments: 84,
-    classTasks: 86,
-    personalDefence: 90,
-  },
-  {
-    id: "6",
-    rank: 6,
-    name: "James Wilson",
-    avatar: "/placeholder.svg?height=64&width=64&query=student%20james",
-    stack: "Product Design",
-    overallScore: 86,
-    tasksCompleted: 37,
-    attendance: 88,
-    punctuality: 90,
-    assignments: 82,
-    classTasks: 84,
-    personalDefence: 88,
-  },
-  {
-    id: "7",
-    rank: 7,
-    name: "Lisa Anderson",
-    avatar: "/placeholder.svg?height=64&width=64&query=student%20lisa",
-    stack: "Front-End",
-    overallScore: 84,
-    tasksCompleted: 35,
-    attendance: 86,
-    punctuality: 88,
-    assignments: 80,
-    classTasks: 82,
-    personalDefence: 86,
-  },
-  {
-    id: "8",
-    rank: 8,
-    name: "Michael Taylor",
-    avatar: "/placeholder.svg?height=64&width=64&query=student%20michael",
-    stack: "Back-End",
-    overallScore: 82,
-    tasksCompleted: 34,
-    attendance: 84,
-    punctuality: 86,
-    assignments: 78,
-    classTasks: 80,
-    personalDefence: 84,
-  },
-];
+interface ApiRankingItem {
+  studentName: string;
+  stack: string;
+  overallScore: number;
+  punctuality: number;
+  Assignments: number;
+  personalDefence: number;
+  classParticipation: number;
+  classAssessment: number;
+}
 
-// Task-specific rankings
-const taskRankings = [
-  { name: "HTML Basics", topScorer: "Amanda Chen", score: 100 },
-  { name: "CSS Fundamentals", topScorer: "Marcus Johnson", score: 98 },
-  { name: "JavaScript Intro", topScorer: "Sarah Williams", score: 96 },
-  { name: "DOM Manipulation", topScorer: "David Brown", score: 95 },
-  { name: "React Basics", topScorer: "Amanda Chen", score: 98 },
-  { name: "API Integration", topScorer: "Marcus Johnson", score: 97 },
-  { name: "Database Design", topScorer: "Emily Davis", score: 94 },
-  { name: "UI/UX Principles", topScorer: "Sarah Williams", score: 99 },
-];
+interface TopScorerItem {
+  title: string;
+  name: string;
+  totalScore: number;
+}
 
-const tabs = ["All", "Front-End", "Back-End", "Product Design"];
+interface RankingsResponse {
+  rankings: ApiRankingItem[];
+  topAssignmentScorers: TopScorerItem[];
+}
+
+interface RankingRow {
+  rank: number;
+  name: string;
+  stack: string;
+  overallScore: number;
+  punctuality: number;
+  assignments: number;
+  personalDefence: number;
+  classParticipation: number;
+  classAssessment: number;
+}
+
+
 
 const getRankIcon = (rank: number) => {
   switch (rank) {
@@ -162,26 +69,57 @@ const getRankIcon = (rank: number) => {
 };
 
 const getStackColor = (stack: string) => {
-  switch (stack) {
-    case "Front-End":
-      return "bg-blue-100 text-blue-800";
-    case "Back-End":
-      return "bg-green-100 text-green-800";
-    case "Product Design":
-      return "bg-purple-100 text-purple-800";
-    default:
-      return "bg-gray-100 text-gray-800";
-  }
+  const s = stack.toLowerCase().replace(/[-\s]/g, "");
+  if (s === "frontend") return "bg-blue-100 text-blue-800";
+  if (s === "backend") return "bg-green-100 text-green-800";
+  if (s === "productdesign") return "bg-purple-100 text-purple-800";
+  return "bg-gray-100 text-gray-800";
 };
+
+const normalizeStack = (stack: string) =>
+  stack.toLowerCase().replace(/[-\s]/g, "");
+
+const tabs = ["All", "Front-End", "Back-End", "Product Design"];
 
 export default function RankingsPage() {
   const user = useCurrentUser();
   const [activeTab, setActiveTab] = useState("All");
+  const [rankingsData, setRankingsData] = useState<RankingRow[]>([]);
+  const [topScorers, setTopScorers] = useState<TopScorerItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const filteredRankings =
-    activeTab === "All"
-      ? rankingsData
-      : rankingsData.filter((student) => student.stack === activeTab);
+  useEffect(() => {
+    const fetchRankings = async () => {
+      setIsLoading(true);
+      try {
+        const params = activeTab === "All" ? undefined : { stack: normalizeStack(activeTab) };
+        const response = await axiosInstance.get<RankingsResponse>("/users/rankings", { params });
+        const items = response.data.rankings || [];
+        const sorted = [...items].sort((a, b) => b.overallScore - a.overallScore);
+        setRankingsData(
+          sorted.map((item, index) => ({
+            rank: index + 1,
+            name: item.studentName,
+            stack: item.stack,
+            overallScore: item.overallScore,
+            punctuality: item.punctuality,
+            assignments: item.Assignments,
+            personalDefence: item.personalDefence,
+            classParticipation: item.classParticipation,
+            classAssessment: item.classAssessment,
+          }))
+        );
+        setTopScorers(response.data.topAssignmentScorers || []);
+      } catch (error) {
+        console.error("Failed to fetch rankings:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchRankings();
+  }, [activeTab]);
+
+  const filteredRankings = rankingsData;
 
   return (
     <DashboardLayout title="Rankings">
@@ -208,7 +146,7 @@ export default function RankingsPage() {
 
             return (
               <Card
-                key={student.id}
+                key={student._id}
                 className="border-none shadow-md transition-shadow hover:shadow-lg overflow-hidden"
               >
                 <div className="h-2" style={{ backgroundColor: pos.color }} />
@@ -275,93 +213,104 @@ export default function RankingsPage() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-[#ffb703]/10 hover:bg-[#ffb703]/10">
-                    <TableHead className="w-[80px] text-xs font-semibold">
-                      Rank
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold">
-                      Student
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold">
-                      Stack
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-right">
-                      Overall
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-right">
-                      Attendance
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-right">
-                      Punctuality
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-right">
-                      Assignments
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-right">
-                      Tasks
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredRankings.map((student) => (
-                    <TableRow
-                      key={student.id}
-                      className="hover:bg-gray-50/50 border-b border-gray-50"
-                    >
-                      <TableCell className="py-4">
-                        <div className="flex items-center justify-center">
-                          {getRankIcon(student.rank)}
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-10 w-10">
-                            <AvatarImage
-                              src={student.avatar}
-                              alt={student.name}
-                            />
-                            <AvatarFallback className="bg-[#ffb703] text-xs text-[#08022b]">
-                              {student.name
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="font-medium text-sm">
-                            {student.name}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <Badge
-                          className={`${getStackColor(student.stack)} text-xs`}
-                        >
-                          {student.stack}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="py-4 text-right">
-                        <span className="font-bold text-[#34a853]">
-                          {student.overallScore}%
-                        </span>
-                      </TableCell>
-                      <TableCell className="py-4 text-right text-sm">
-                        {student.attendance}%
-                      </TableCell>
-                      <TableCell className="py-4 text-right text-sm">
-                        {student.punctuality}%
-                      </TableCell>
-                      <TableCell className="py-4 text-right text-sm">
-                        {student.assignments}%
-                      </TableCell>
-                      <TableCell className="py-4 text-right text-sm">
-                        {student.classTasks}%
-                      </TableCell>
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-[#ffb703]" />
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-[#ffb703]/10 hover:bg-[#ffb703]/10">
+                      <TableHead className="w-[80px] text-xs font-semibold">
+                        Rank
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold">
+                        Student
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold">
+                        Stack
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold text-right">
+                        Overall
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold text-right">
+                        Punctuality
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold text-right">
+                        Assignments
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold text-right">
+                        Participation
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold text-right">
+                        Assessment
+                      </TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredRankings.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                          No rankings data available
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredRankings.map((student) => (
+                        <TableRow
+                          key={student.rank}
+                          className="hover:bg-gray-50/50 border-b border-gray-50"
+                        >
+                          <TableCell className="py-4">
+                            <div className="flex items-center justify-center">
+                              {getRankIcon(student.rank)}
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-10 w-10">
+                                <AvatarImage src="/placeholder.svg" alt={student.name} />
+                                <AvatarFallback className="bg-[#ffb703] text-xs text-[#08022b]">
+                                  {student.name
+                                    .split(" ")
+                                    .map((n) => n[0])
+                                    .join("")}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="font-medium text-sm">
+                                {student.name}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <Badge
+                              className={`${getStackColor(student.stack)} text-xs`}
+                            >
+                              {student.stack}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-4 text-right">
+                            <span className="font-bold text-[#34a853]">
+                              {student.overallScore.toFixed(2)}%
+                            </span>
+                          </TableCell>
+                          <TableCell className="py-4 text-right text-sm">
+                            {student.punctuality.toFixed(2)}%
+                          </TableCell>
+                          <TableCell className="py-4 text-right text-sm">
+                            {student.assignments.toFixed(2)}%
+                          </TableCell>
+                          <TableCell className="py-4 text-right text-sm">
+                            {student.classParticipation.toFixed(2)}%
+                          </TableCell>
+                          <TableCell className="py-4 text-right text-sm">
+                            {student.classAssessment.toFixed(2)}%
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -376,21 +325,21 @@ export default function RankingsPage() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {taskRankings.map((task, index) => (
+              {topScorers.map((scorer, index) => (
                 <div
                   key={index}
                   className="p-4 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-gray-50 transition-colors"
                 >
                   <p className="text-xs text-muted-foreground uppercase tracking-wide">
-                    {task.name}
+                    {scorer.title}
                   </p>
                   <p className="mt-1 font-semibold text-foreground">
-                    {task.topScorer}
+                    {scorer.name}
                   </p>
                   <div className="mt-2 flex items-center gap-1">
                     <Trophy className="h-4 w-4 text-[#ffb703]" />
                     <span className="text-sm font-bold text-[#34a853]">
-                      {task.score}%
+                      {scorer.totalScore}%
                     </span>
                   </div>
                 </div>

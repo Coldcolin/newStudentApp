@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useCurrentUser } from "@/lib/store/hooks";
+import axiosInstance from "@/lib/api/axios";
 
 // Mock student data
 const studentsData: Record<
@@ -152,11 +153,15 @@ export default function StudentDetailPage({
   const { id } = use(params);
   const router = useRouter();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showAlumniDialog, setShowAlumniDialog] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
-
-  const student = studentsData[id] || studentsData["1"];
+  const [student, setStudent] = useState<any>(
+    studentsData[id] || studentsData["1"],
+  );
+  const [loading, setLoading] = useState(true);
   const currentUser = useCurrentUser();
   const isAdmin = currentUser?.role === "admin";
+  const isAlumni = student?.role === "alumni";
 
   const handleDelete = () => {
     setShowDeleteDialog(false);
@@ -164,9 +169,48 @@ export default function StudentDetailPage({
     router.push("/students");
   };
 
+  const handleMakeAlumni = async () => {
+    try {
+      const endpoint = isAlumni ? `/users/student/${id}` : `/users/alumni/${id}`;
+      const message = isAlumni
+        ? "Student marked as active successfully"
+        : "Student marked as alumni successfully";
+      await axiosInstance.patch(endpoint);
+      toast.success(message);
+      setShowAlumniDialog(false);
+      router.push("/students");
+    } catch (error) {
+      console.error("Error updating student status:", error);
+      toast.error("Failed to update student status");
+      setShowAlumniDialog(false);
+    }
+  };
+
   const handleGradeSubmit = () => {
     setShowSuccessDialog(true);
   };
+
+  const handleGetStudentInfo = async () => {
+    try {
+      setLoading(true);
+      console.log("Fetching student with id:", id);
+      const response = await axiosInstance.get(`/users/students/${id}`);
+      console.log("Full response:", response);
+      console.log("Response data:", response.data);
+      // Handle both direct data and nested data structures
+      const studentData = response.data?.data || response.data;
+      setStudent(studentData);
+    } catch (error) {
+      console.error("Error fetching student:", error);
+      toast.error("Failed to fetch student info");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    handleGetStudentInfo();
+  }, [id]);
 
   return (
     <DashboardLayout title="Profile">
@@ -186,12 +230,9 @@ export default function StudentDetailPage({
           <CardContent className="p-6">
             <div className="flex flex-col items-center gap-6 md:flex-row md:items-start">
               <Avatar className="h-24 w-24 border-4 border-[#ffb703]">
-                <AvatarImage
-                  src={`/placeholder.svg?height=96&width=96&query=student%20${student.firstName}`}
-                />
+                <AvatarImage src={student.image} />
                 <AvatarFallback className="bg-[#ffb703] text-[#08022b] text-2xl">
-                  {student.firstName[0]}
-                  {student.lastName[0]}
+                  {student.name?.charAt(0) || "S"}
                 </AvatarFallback>
               </Avatar>
 
@@ -199,10 +240,12 @@ export default function StudentDetailPage({
                 <div className="flex flex-col items-center gap-2 md:flex-row md:items-start md:justify-between">
                   <div>
                     <h2 className="text-2xl font-bold text-foreground">
-                      {student.firstName} {student.lastName}
+                      {student.name}
                     </h2>
-                    <p className="text-muted-foreground">{student.bio}</p>
-                    <div className="mt-2">{getStatusBadge(student.status)}</div>
+                    <p className="text-muted-foreground">
+                      {student.stack} Developer
+                    </p>
+                    <div className="mt-2">{getStatusBadge("active")}</div>
                   </div>
                   <div className="flex gap-2">
                     {/* <Button variant="outline" className="gap-2">
@@ -210,14 +253,28 @@ export default function StudentDetailPage({
                       Edit Profile
                     </Button> */}
                     {isAdmin && (
-                      <Button
-                        variant="outline"
-                        className="gap-2 text-[#ec1c24] hover:bg-[#ec1c24]/10 hover:text-[#ec1c24]"
-                        onClick={() => setShowDeleteDialog(true)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Delete
-                      </Button>
+                      <>
+                        <Button
+                          variant="outline"
+                          className={`gap-2 ${
+                            isAlumni
+                              ? "text-[#ffb703] hover:bg-[#ffb703]/10 hover:text-[#ffb703]"
+                              : "text-[#34a853] hover:bg-[#34a853]/10 hover:text-[#34a853]"
+                          }`}
+                          onClick={() => setShowAlumniDialog(true)}
+                        >
+                          <GraduationCap className="h-4 w-4" />
+                          {isAlumni ? "Make Student" : "Make Alumni"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="gap-2 text-[#ec1c24] hover:bg-[#ec1c24]/10 hover:text-[#ec1c24]"
+                          onClick={() => setShowDeleteDialog(true)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -231,12 +288,14 @@ export default function StudentDetailPage({
                     <Calendar className="h-4 w-4" />
                     <span>
                       Enrolled{" "}
-                      {new Date(student.enrollmentDate).toLocaleDateString()}
+                      {student.createdAt
+                        ? new Date(student.createdAt).toLocaleDateString()
+                        : "N/A"}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <GraduationCap className="h-4 w-4" />
-                    <span>{student.cohort}</span>
+                    <span>Cohort {student.cohort}</span>
                   </div>
                 </div>
               </div>
@@ -250,27 +309,34 @@ export default function StudentDetailPage({
             <CardContent className="p-6">
               <div className="text-center">
                 <p className="text-3xl font-bold text-[#ffb703]">
-                  {student.grade}
+                  {student.overallRating?.toFixed(1) || "N/A"}
                 </p>
-                <p className="text-sm text-muted-foreground">Current Grade</p>
+                <p className="text-sm text-muted-foreground">Overall Rating</p>
               </div>
             </CardContent>
           </Card>
           <Card className="border-none shadow-sm">
             <CardContent className="p-6">
               <div className="text-center">
-                <p className="text-3xl font-bold text-foreground">5</p>
-                <p className="text-sm text-muted-foreground">
-                  Assignments Completed
+                <p className="text-3xl font-bold text-foreground">
+                  {student.allRatings?.length || 0}
                 </p>
+                <p className="text-sm text-muted-foreground">Weeks Assessed</p>
               </div>
             </CardContent>
           </Card>
           <Card className="border-none shadow-sm">
             <CardContent className="p-6">
               <div className="text-center">
-                <p className="text-3xl font-bold text-[#34a853]">90%</p>
-                <p className="text-sm text-muted-foreground">Average Score</p>
+                <p className="text-3xl font-bold text-[#34a853]">
+                  {student.weeklyRating?.toFixed(1) ||
+                    (student.allRatings?.length > 0
+                      ? student.allRatings[
+                          student.allRatings.length - 1
+                        ]?.total?.toFixed(1)
+                      : "N/A")}
+                </p>
+                <p className="text-sm text-muted-foreground">Weekly Rating</p>
               </div>
             </CardContent>
           </Card>
@@ -292,34 +358,55 @@ export default function StudentDetailPage({
               <TableHeader>
                 <TableRow>
                   <TableHead>Week</TableHead>
-                  <TableHead>Assignment</TableHead>
-                  <TableHead>Score</TableHead>
+                  <TableHead>Punctuality</TableHead>
+                  <TableHead>Assignments</TableHead>
+                  <TableHead>Defense</TableHead>
+                  <TableHead>Participation</TableHead>
+                  <TableHead>Assessment</TableHead>
+                  <TableHead>Total</TableHead>
                   <TableHead>Date</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {gradingHistory.map((item, index) => (
+                {student.allRatings?.map((item: any, index: number) => (
                   <TableRow key={index}>
-                    <TableCell className="font-medium">{item.week}</TableCell>
-                    <TableCell>{item.assignment}</TableCell>
+                    <TableCell className="font-medium">
+                      Week {item.week}
+                    </TableCell>
+                    <TableCell>{item.punctuality}</TableCell>
+                    <TableCell>{item.Assignments}</TableCell>
+                    <TableCell>{item.personalDefense}</TableCell>
+                    <TableCell>{item.classParticipation}</TableCell>
+                    <TableCell>{item.classAssessment}</TableCell>
                     <TableCell>
                       <span
                         className={`font-semibold ${
-                          item.score >= 90
+                          item.total >= 18
                             ? "text-[#34a853]"
-                            : item.score >= 70
+                            : item.total >= 15
                               ? "text-[#ffb703]"
                               : "text-[#ec1c24]"
                         }`}
                       >
-                        {item.score}/{item.maxScore}
+                        {item.total}
                       </span>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {new Date(item.date).toLocaleDateString()}
+                      {item.createdAt
+                        ? new Date(item.createdAt).toLocaleDateString()
+                        : "N/A"}
                     </TableCell>
                   </TableRow>
-                ))}
+                )) || (
+                  <TableRow>
+                    <TableCell
+                      colSpan={8}
+                      className="text-center text-muted-foreground"
+                    >
+                      No ratings available
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </CardContent>
@@ -350,6 +437,42 @@ export default function StudentDetailPage({
               onClick={handleDelete}
             >
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Alumni/Student Confirmation Dialog */}
+      <Dialog open={showAlumniDialog} onOpenChange={setShowAlumniDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {isAlumni
+                ? "Move this student back to active?"
+                : "Mark this student as alumni?"}
+            </DialogTitle>
+            <DialogDescription>
+              {isAlumni
+                ? "This action will move the student back to active student status."
+                : "This action will move the student to alumni status. They will no longer appear in the active student list."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setShowAlumniDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className={`${
+                isAlumni
+                  ? "bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+                  : "bg-[#34a853] text-white hover:bg-[#34a853]/90"
+              }`}
+              onClick={handleMakeAlumni}
+            >
+              Confirm
             </Button>
           </DialogFooter>
         </DialogContent>
