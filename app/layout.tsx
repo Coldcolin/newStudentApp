@@ -10,8 +10,8 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: {
-    default: "Curve Academy",
-    template: "%s | Curve Academy",
+    default: "The Curve Africa",
+    template: "%s | The Curve Africa",
   },
   description: "Modern education platform for students and teachers",
   generator: "The Curve Africa",
