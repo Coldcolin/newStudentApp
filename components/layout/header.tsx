@@ -60,7 +60,7 @@ export function Header({ title }: HeaderProps) {
               </Avatar>
               <div className="hidden flex-col items-start md:flex">
                 <span className="text-sm font-semibold text-foreground">
-                  {user?.fullName || "Chiamaka Dubem"}
+                  {user?.fullName || " "}
                 </span>
                 <span className="text-xs text-[#219ebc]">{user?.role}</span>
               </div>

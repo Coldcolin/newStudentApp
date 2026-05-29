@@ -86,7 +86,7 @@ export default function LoginPage() {
       }
 
       // Determine role based on stack: "Tutor" = admin, anything else = student
-      const role = stack === "Tutor" ? "admin" : "student";
+      const role = userInfo?.role === "tutor" || userInfo?.role === "admin" ? "admin" : "student";
 
       // Create initial user object (will be updated after fetching full details)
       const initialUser = {

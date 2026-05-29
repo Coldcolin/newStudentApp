@@ -10,6 +10,7 @@ import {
   Calendar,
   GraduationCap,
   CheckCircle,
+  Loader2,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Button } from "@/components/ui/button";
@@ -154,6 +155,7 @@ export default function StudentDetailPage({
   const router = useRouter();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showAlumniDialog, setShowAlumniDialog] = useState(false);
+  const [isUpdatingAlumni, setIsUpdatingAlumni] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [student, setStudent] = useState<any>(
     studentsData[id] || studentsData["1"],
@@ -171,6 +173,7 @@ export default function StudentDetailPage({
 
   const handleMakeAlumni = async () => {
     try {
+      setIsUpdatingAlumni(true);
       const endpoint = isAlumni ? `/users/student/${id}` : `/users/alumni/${id}`;
       const message = isAlumni
         ? "Student marked as active successfully"
@@ -183,6 +186,8 @@ export default function StudentDetailPage({
       console.error("Error updating student status:", error);
       toast.error("Failed to update student status");
       setShowAlumniDialog(false);
+    } finally {
+      setIsUpdatingAlumni(false);
     }
   };
 
@@ -471,8 +476,16 @@ export default function StudentDetailPage({
                   : "bg-[#34a853] text-white hover:bg-[#34a853]/90"
               }`}
               onClick={handleMakeAlumni}
+              disabled={isUpdatingAlumni}
             >
-              Confirm
+              {isUpdatingAlumni ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                "Confirm"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
