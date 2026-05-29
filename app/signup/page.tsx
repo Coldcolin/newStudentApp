@@ -67,9 +67,10 @@ export default function SignupPage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const isLoading = useAuthLoading();
-  const authError = useAuthError();
+  // const authError = useAuthError();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
   const {
@@ -95,6 +96,7 @@ export default function SignupPage() {
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setAvatarFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
         setAvatarPreview(reader.result as string);
@@ -104,6 +106,11 @@ export default function SignupPage() {
   };
 
   const onSubmit = async (data: SignupFormData) => {
+    if (!avatarFile) {
+      toast.error("Please add a profile photo to continue.");
+      return;
+    }
+
     dispatch(clearError());
     dispatch(setLoading(true));
 
@@ -116,13 +123,7 @@ export default function SignupPage() {
       formData.append("hub", data.hub);
       formData.append("phone", data.phone);
       formData.append("stack", data.stack);
-
-      // Append image if available
-      const avatarFile = (document.getElementById("avatar") as HTMLInputElement)
-        ?.files?.[0];
-      if (avatarFile) {
-        formData.append("image", avatarFile);
-      }
+      formData.append("image", avatarFile);
 
       // Call the actual API endpoint using axios
       // Note: axios automatically sets Content-Type to multipart/form-data for FormData
@@ -173,28 +174,35 @@ export default function SignupPage() {
         )} */}
 
         {/* Avatar Upload */}
-        <div className="flex justify-center">
-          <div className="relative">
-            <Avatar className="h-20 w-20 border-4 border-[#ffb703]">
-              <AvatarImage src={avatarPreview || undefined} />
-              <AvatarFallback className="bg-[#f3f4f6] text-[#687182] text-xl">
-                {name?.[0]}
-              </AvatarFallback>
-            </Avatar>
-            <label
-              htmlFor="avatar"
-              className="absolute -bottom-1 -right-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] transition-colors"
-            >
-              <Upload className="h-4 w-4" />
-              <input
-                id="avatar"
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleAvatarChange}
-              />
-            </label>
+        <div className="space-y-2">
+          <div className="flex justify-center">
+            <div className="relative">
+              <Avatar className="h-20 w-20 border-4 border-[#ffb703]">
+                <AvatarImage src={avatarPreview || undefined} />
+                <AvatarFallback className="bg-[#f3f4f6] text-[#687182] text-xl">
+                  {name?.[0]}
+                </AvatarFallback>
+              </Avatar>
+              <label
+                htmlFor="avatar"
+                className="absolute -bottom-1 -right-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] transition-colors"
+              >
+                <Upload className="h-4 w-4" />
+                <input
+                  id="avatar"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleAvatarChange}
+                />
+              </label>
+            </div>
           </div>
+          {!avatarFile && (
+            <p className="text-center text-sm text-[#ec1c24]">
+              Please add a profile photo to sign up.
+            </p>
+          )}
         </div>
 
         {/* Name */}
@@ -278,7 +286,7 @@ export default function SignupPage() {
               <SelectItem value="frontend">Frontend</SelectItem>
               <SelectItem value="backend">Backend</SelectItem>
               <SelectItem value="product design">Product Design</SelectItem>
-              <SelectItem value="tutor">Tutor</SelectItem>
+              {/* <SelectItem value="tutor">Tutor</SelectItem> */}
             </SelectContent>
           </Select>
           {errors.stack && (
@@ -346,7 +354,7 @@ export default function SignupPage() {
 
         <Button
           type="submit"
-          disabled={isLoading}
+          disabled={isLoading || !avatarFile}
           className="h-11 w-full bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
         >
           {isLoading ? (

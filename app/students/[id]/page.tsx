@@ -156,6 +156,7 @@ export default function StudentDetailPage({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showAlumniDialog, setShowAlumniDialog] = useState(false);
   const [isUpdatingAlumni, setIsUpdatingAlumni] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [student, setStudent] = useState<any>(
     studentsData[id] || studentsData["1"],
@@ -165,10 +166,20 @@ export default function StudentDetailPage({
   const isAdmin = currentUser?.role === "admin";
   const isAlumni = student?.role === "alumni";
 
-  const handleDelete = () => {
-    setShowDeleteDialog(false);
-    toast.success("Student deleted successfully");
-    router.push("/students");
+  const handleDelete = async () => {
+    try {
+      setIsDeleting(true);
+      await axiosInstance.delete(`/users/remove/${id}/`);
+      setShowDeleteDialog(false);
+      toast.success("Student deleted successfully");
+      router.push("/students");
+    } catch (error) {
+      console.error("Error deleting student:", error);
+      toast.error("Failed to delete student");
+      setShowDeleteDialog(false);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleMakeAlumni = async () => {
@@ -440,8 +451,16 @@ export default function StudentDetailPage({
             <Button
               className="bg-[#ec1c24] text-white hover:bg-[#ec1c24]/90"
               onClick={handleDelete}
+              disabled={isDeleting}
             >
-              Delete
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
