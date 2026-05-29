@@ -22,7 +22,7 @@ import Link from "next/link";
 const studentsOfWeek = [
   {
     id: "1",
-    name: "Victoria Daniels",
+    name: " ",
     role: "Front-End Trainee",
     avatar:
       "/placeholder.svg?height=200&width=200&query=african%20woman%20professional",
@@ -31,7 +31,7 @@ const studentsOfWeek = [
   },
   {
     id: "2",
-    name: "Vivian Miles",
+    name: " ",
     role: "Back-End Trainee",
     avatar:
       "/placeholder.svg?height=200&width=200&query=african%20man%20science%20shirt",
@@ -40,7 +40,7 @@ const studentsOfWeek = [
   },
   {
     id: "3",
-    name: "Frank Nige",
+    name: " ",
     role: "Product Design Trainee",
     avatar:
       "/placeholder.svg?height=200&width=200&query=african%20man%20casual",

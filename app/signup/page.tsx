@@ -240,7 +240,7 @@ export default function SignupPage() {
           <Input
             id="phone"
             type="tel"
-            placeholder="+234 800 000 0000"
+            placeholder="0800 000 0000"
             {...register("phone")}
             className="h-11"
           />
