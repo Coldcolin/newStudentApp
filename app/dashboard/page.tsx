@@ -101,9 +101,9 @@ export default function DashboardPage() {
     Record<string, HistoryItem[]>
   >({});
 
-  const getDashboardTitle = () => {
-    return `Hi ${user?.fullName || ""}`;
-  };
+  // const getDashboardTitle = () => {
+  //   return `Hi ${user?.fullName || ""}`;
+  // };
 
   const getStudentoftheWeekInfo = async () => {
     try {
@@ -127,7 +127,7 @@ export default function DashboardPage() {
         },
         {
           id: backendRes.data?.data?.student?._id || "2",
-          name: backendRes.data?.data?.student?.name || "Vivian Miles",
+          name: backendRes.data?.data?.student?.name || " ",
           role: "Back-End Trainee",
           avatar:
             backendRes.data?.data?.student?.image ||
@@ -137,7 +137,7 @@ export default function DashboardPage() {
         },
         {
           id: productRes.data?.data?.student?._id || "3",
-          name: productRes.data?.data?.student?.name || "Frank Nige",
+          name: productRes.data?.data?.student?.name || " ",
           role: "Product Design Trainee",
           avatar:
             productRes.data?.data?.student?.image ||

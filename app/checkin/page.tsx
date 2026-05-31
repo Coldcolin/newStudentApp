@@ -52,6 +52,7 @@ import { Input } from "@/components/ui/input";
 import { useCurrentUser } from "@/lib/store/hooks";
 import axiosInstance, { api } from "@/lib/api/axios";
 import { toast } from "sonner";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 
 type CheckInStatus = "idle" | "camera" | "processing" | "success" | "error";
 type LocationStatus = "idle" | "requesting" | "granted" | "denied";
@@ -257,7 +258,11 @@ const normalizeStack = (stack: string) =>
 // Admin Attendance View Component
 function AdminAttendanceView() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState("Front-End");
+  const [activeTab, setActiveTab] = usePersistedState(
+    "thecurve:checkin:stack",
+    "Front-End",
+    tabs,
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [students, setStudents] = useState<StudentData[]>([]);

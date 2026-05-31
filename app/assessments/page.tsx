@@ -14,6 +14,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -143,181 +144,7 @@ interface Submission {
   submissionLink?: string;
 }
 
-// Mock data for admin view - each student has unique ID
-// const mockStudentAssessments: StudentAssessment[] = [
-//   {
-//     _id: "student-1",
-//     name: "Emma Johnson",
-//     stack: "Frontend Development",
-//     week: 5,
-//     hasCheck: true,
-//     avgPercent: "76%",
-//   },
-//   {
-//     _id: "student-2",
-//     name: "Michael Chen",
-//     stack: "Frontend Development",
-//     week: 5,
-//     hasCheck: true,
-//     avgPercent: "82%",
-//   },
-//   {
-//     _id: "student-3",
-//     name: "Sarah Williams",
-//     stack: "Frontend Development",
-//     week: null,
-//     hasCheck: false,
-//     avgPercent: null,
-//   },
-//   {
-//     _id: "student-4",
-//     name: "David Brown",
-//     stack: "Frontend Development",
-//     week: 5,
-//     hasCheck: true,
-//     avgPercent: "79%",
-//   },
-//   {
-//     _id: "student-5",
-//     name: "Lisa Anderson",
-//     stack: "Frontend Development",
-//     week: null,
-//     hasCheck: false,
-//     avgPercent: null,
-//   },
-//   {
-//     _id: "student-6",
-//     name: "James Taylor",
-//     stack: "Frontend Development",
-//     week: 5,
-//     hasCheck: true,
-//     avgPercent: "88%",
-//   },
-//   {
-//     _id: "student-7",
-//     name: "Jennifer Martinez",
-//     stack: "Frontend Development",
-//     week: 5,
-//     hasCheck: true,
-//     avgPercent: "71%",
-//   },
-//   {
-//     _id: "student-8",
-//     name: "Robert Garcia",
-//     stack: "Frontend Development",
-//     week: 5,
-//     hasCheck: true,
-//     avgPercent: "85%",
-//   },
-//   {
-//     _id: "student-9",
-//     name: "Emily Davis",
-//     stack: "Frontend Development",
-//     week: 5,
-//     hasCheck: true,
-//     avgPercent: "92%",
-//   },
-//   {
-//     _id: "student-10",
-//     name: "Daniel Wilson",
-//     stack: "Frontend Development",
-//     week: 5,
-//     hasCheck: true,
-//     avgPercent: "78%",
-//   },
-//   {
-//     _id: "student-11",
-//     name: "Amanda Thomas",
-//     stack: "Frontend Development",
-//     week: null,
-//     hasCheck: false,
-//     avgPercent: null,
-//   },
-// ];
 
-// // Mock tasks data
-// const mockTasks: Task[] = [
-//   {
-//     _id: "1",
-//     title: "Build a Responsive Landing Page",
-//     description:
-//       "Create a fully responsive landing page using HTML, CSS, and JavaScript",
-//     dueDate: "2024-02-20",
-//     status: "completed",
-//     score: 85,
-//   },
-//   {
-//     _id: "2",
-//     title: "React Component Library",
-//     description: "Build reusable components with proper documentation",
-//     dueDate: "2024-02-25",
-//     status: "completed",
-//     score: 90,
-//   },
-//   {
-//     _id: "3",
-//     title: "API Integration Project",
-//     description: "Integrate a REST API into a React application",
-//     dueDate: "2024-03-01",
-//     status: "in-progress",
-//   },
-//   {
-//     _id: "4",
-//     title: "State Management Implementation",
-//     description: "Implement Redux or Zustand in an existing project",
-//     dueDate: "2024-03-05",
-//     status: "pending",
-//   },
-//   {
-//     _id: "5",
-//     title: "Testing with Jest",
-//     description: "Write unit tests for existing components",
-//     dueDate: "2024-03-10",
-//     status: "pending",
-//   },
-// ];
-
-// Mock submissions data
-// const mockSubmissions: Submission[] = [
-//   {
-//     _id: "1",
-//     title: "Week 1 - HTML Basics",
-//     submittedDate: "2024-01-15",
-//     status: "graded",
-//     score: 88,
-//     feedback: "Great work on semantic HTML!",
-//   },
-//   {
-//     _id: "2",
-//     title: "Week 2 - CSS Layouts",
-//     submittedDate: "2024-01-22",
-//     status: "graded",
-//     score: 92,
-//     feedback: "Excellent use of flexbox and grid",
-//   },
-//   {
-//     _id: "3",
-//     title: "Week 3 - JavaScript Fundamentals",
-//     submittedDate: "2024-01-29",
-//     status: "graded",
-//     score: 78,
-//     feedback: "Good but needs work on async/await",
-//   },
-//   {
-//     _id: "4",
-//     title: "Week 4 - React Basics",
-//     submittedDate: "2024-02-05",
-//     status: "graded",
-//     score: 85,
-//     feedback: "Good component structure",
-//   },
-//   {
-//     _id: "5",
-//     title: "Week 5 - Advanced React",
-//     submittedDate: "2024-02-12",
-//     status: "pending",
-//   },
-// ];
 
 const stackTabs = ["Front-End", "Back-End", "Product Design"];
 
@@ -1321,7 +1148,11 @@ function StudentAssessmentView({
 // Admin Assessment View Component
 function AdminAssessmentView() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState("Front-End");
+  const [activeTab, setActiveTab] = usePersistedState(
+    "thecurve:assessments:admin-stack",
+    "Front-End",
+    stackTabs,
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   // const [students, setStudents] = useState<StudentAssessment[]>(

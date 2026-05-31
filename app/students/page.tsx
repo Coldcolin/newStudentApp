@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import Link from "next/link";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { useCurrentUser } from "@/lib/store/hooks";
 import axiosInstance, { api } from "@/lib/api/axios";
 
@@ -44,7 +45,11 @@ const tabs = ["Frontend", "Backend", "Product Design"];
 
 export default function StudentsPage() {
   const user = useCurrentUser();
-  const [activeTab, setActiveTab] = useState("Frontend");
+  const [activeTab, setActiveTab] = usePersistedState(
+    "thecurve:students:stack",
+    "Frontend",
+    tabs,
+  );
   const [currentView, setCurrentView] = useState<ViewType>("students");
   const [searchQueries, setSearchQueries] = useState<Record<ViewType, string>>({
     students: "",
