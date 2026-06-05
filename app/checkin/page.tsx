@@ -120,8 +120,8 @@ interface StudentsApiResponse {
 const tabs = ["Front-End", "Back-End", "Product Design"];
 
 function AttendanceCard({ record }: { record: AttendanceRecord }) {
-  // Determine status based on punctuality score (assuming score >= 50 is early/on-time)
-  const status = record.punctualityScore >= 50 ? "Early" : "Late";
+  // Punctuality score is 0–20 (0 = late, 20 = early); 10 is still late
+  const status = record.punctualityScore > 10 ? "Early" : "Late";
   const formattedDate = new Date(record.date).toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
@@ -164,7 +164,7 @@ function AttendanceCard({ record }: { record: AttendanceRecord }) {
           <p className="text-muted-foreground">
             <span className="block sm:inline">Score:</span>{" "}
             <span className="text-foreground font-medium">
-              {record.punctualityScore}%
+              {record.punctualityScore * 5}%
             </span>
           </p>
         </div>
@@ -453,26 +453,25 @@ function StudentCheckInView() {
     };
   }, []);
 
-  // Fetch attendance history from API
-  useEffect(() => {
-    const fetchAttendanceHistory = async () => {
-      if (!user?.id) return;
+  const fetchAttendanceHistory = useCallback(async () => {
+    if (!user?.id) return;
 
-      setIsLoadingAttendance(true);
-      try {
-        const response = await axiosInstance.get<StudentAttendanceApiResponse>(
-          `/api/v1/studentAttendance/${user.id}`,
-        );
-        setAttendanceHistory(response.data.data || []);
-      } catch (error) {
-        console.error("Failed to fetch attendance history:", error);
-      } finally {
-        setIsLoadingAttendance(false);
-      }
-    };
-
-    fetchAttendanceHistory();
+    setIsLoadingAttendance(true);
+    try {
+      const response = await axiosInstance.get<StudentAttendanceApiResponse>(
+        `/api/v1/studentAttendance/${user.id}`,
+      );
+      setAttendanceHistory(response.data.data || []);
+    } catch (error) {
+      console.error("Failed to fetch attendance history:", error);
+    } finally {
+      setIsLoadingAttendance(false);
+    }
   }, [user?.id]);
+
+  useEffect(() => {
+    fetchAttendanceHistory();
+  }, [fetchAttendanceHistory]);
 
   const requestLocationAccess = useCallback(async () => {
     setLocationStatus("requesting");
@@ -568,6 +567,8 @@ function StudentCheckInView() {
             },
           });
 
+          await fetchAttendanceHistory();
+
           setCheckInStatus("success");
           setTimeout(() => {
             setShowSuccess(true);
@@ -579,7 +580,7 @@ function StudentCheckInView() {
         }
       }
     }
-  }, [locationData]);
+  }, [locationData, fetchAttendanceHistory]);
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -826,17 +827,17 @@ function StudentCheckInView() {
           <h2 className="text-xl font-semibold text-foreground">
             Attendance History
           </h2>
-          <Select value={filterMonth} onValueChange={setFilterMonth}>
+          {/* <Select value={filterMonth} onValueChange={setFilterMonth}>
             <SelectTrigger className="w-full sm:w-[140px]">
               <SelectValue placeholder="Filter" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Time</SelectItem>
-              <SelectItem value="october">October 2024</SelectItem>
-              <SelectItem value="september">September 2024</SelectItem>
-              <SelectItem value="august">August 2024</SelectItem>
+              <SelectItem value="june">June 2026</SelectItem>
+              <SelectItem value="may">May 2026</SelectItem>
+              <SelectItem value="april">April 2026</SelectItem>
             </SelectContent>
-          </Select>
+          </Select> */}
         </div>
 
         {/* Attendance Grid */}
