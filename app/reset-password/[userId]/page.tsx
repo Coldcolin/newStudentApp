@@ -67,7 +67,7 @@ export default function ResetPasswordPage({
   const onSubmit = async (data: ResetPasswordFormData) => {
     setIsLoading(true);
     try {
-      await axiosInstance.post(`/users/reset/${userId}`, {
+      await axiosInstance.patch(`/users/reset/${userId}`, {
         id: userId,
         token: data.token,
         password: data.password,
