@@ -331,6 +331,42 @@ export async function addStudentRating(
 }
 
 /**
+ * Delete a student's weekly rating (Admin/Tutor only)
+ * Endpoint: DELETE /rating/delete/{studentId}/{week}
+ */
+export async function deleteStudentRating(
+  studentId: string,
+  week: number,
+): Promise<{ message: string }> {
+  const response = await axiosInstance.delete(
+    `/rating/delete/${studentId}/${week}`,
+  );
+  return response.data;
+}
+
+export interface UploadRatingsExcelResponse {
+  message?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Bulk upload student ratings from an Excel file (Admin/Tutor only)
+ * Endpoint: POST /rating/upload-excel
+ */
+export async function uploadRatingsExcel(
+  file: File,
+): Promise<UploadRatingsExcelResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await axiosInstance.post<UploadRatingsExcelResponse>(
+    "/rating/upload-excel",
+    formData,
+    { timeout: 0 },
+  );
+  return response.data;
+}
+
+/**
  * Get a student's performance review (weekly ratings + breakdown).
  * Endpoint: GET /students/:id/performance-review
  */

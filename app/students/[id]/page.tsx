@@ -36,6 +36,7 @@ import {
 import { toast } from "sonner";
 import { useCurrentUser } from "@/lib/store/hooks";
 import axiosInstance from "@/lib/api/axios";
+import { deleteStudentRating } from "@/lib/api/assignments";
 
 // Mock student data
 const studentsData: Record<
@@ -158,6 +159,10 @@ export default function StudentDetailPage({
   const [isUpdatingAlumni, setIsUpdatingAlumni] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [ratingWeekToDelete, setRatingWeekToDelete] = useState<number | null>(
+    null,
+  );
+  const [isDeletingRating, setIsDeletingRating] = useState(false);
   const [student, setStudent] = useState<any>(
     studentsData[id] || studentsData["1"],
   );
@@ -204,6 +209,22 @@ export default function StudentDetailPage({
 
   const handleGradeSubmit = () => {
     setShowSuccessDialog(true);
+  };
+
+  const handleDeleteRating = async () => {
+    if (ratingWeekToDelete == null) return;
+    try {
+      setIsDeletingRating(true);
+      await deleteStudentRating(id, ratingWeekToDelete);
+      setRatingWeekToDelete(null);
+      toast.success("Rating deleted successfully");
+      await handleGetStudentInfo();
+    } catch (error) {
+      console.error("Error deleting rating:", error);
+      toast.error("Failed to delete rating");
+    } finally {
+      setIsDeletingRating(false);
+    }
   };
 
   const handleGetStudentInfo = async () => {
@@ -381,11 +402,12 @@ export default function StudentDetailPage({
                   <TableHead>Assessment</TableHead>
                   <TableHead>Total</TableHead>
                   <TableHead>Date</TableHead>
+                  {isAdmin && <TableHead>Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {student.allRatings?.map((item: any, index: number) => (
-                  <TableRow key={index}>
+                {student.allRatings?.map((item: any) => (
+                  <TableRow key={item._id ?? item.week}>
                     <TableCell className="font-medium">
                       Week {item.week}
                     </TableCell>
@@ -412,11 +434,27 @@ export default function StudentDetailPage({
                         ? new Date(item.createdAt).toLocaleDateString()
                         : "N/A"}
                     </TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-[#ec1c24] hover:bg-[#ec1c24]/10 hover:text-[#ec1c24]"
+                          onClick={() => setRatingWeekToDelete(item.week)}
+                          disabled={
+                            isDeletingRating &&
+                            ratingWeekToDelete === item.week
+                          }
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 )) || (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={isAdmin ? 9 : 8}
                       className="text-center text-muted-foreground"
                     >
                       No ratings available
@@ -465,6 +503,50 @@ export default function StudentDetailPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Rating Delete Confirmation Dialog */}
+      {isAdmin && (
+        <Dialog
+          open={ratingWeekToDelete != null}
+          onOpenChange={(open) => {
+            if (!open) setRatingWeekToDelete(null);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                Delete Week {ratingWeekToDelete} rating?
+              </DialogTitle>
+              <DialogDescription>
+                This action cannot be undone. This will permanently delete the
+                rating for this week.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                variant="outline"
+                onClick={() => setRatingWeekToDelete(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-[#ec1c24] text-white hover:bg-[#ec1c24]/90"
+                onClick={handleDeleteRating}
+                disabled={isDeletingRating}
+              >
+                {isDeletingRating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Alumni/Student Confirmation Dialog */}
       <Dialog open={showAlumniDialog} onOpenChange={setShowAlumniDialog}>

@@ -12,6 +12,8 @@ import {
   Send,
   Plus,
   Calendar,
+  Upload,
+  FileSpreadsheet,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePersistedState } from "@/hooks/use-persisted-state";
@@ -53,7 +55,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { useCurrentUser } from "@/lib/store/hooks";
 import { toast } from "sonner";
-import axiosInstance from "@/lib/api/axios";
+import axiosInstance, { type ApiError } from "@/lib/api/axios";
+import * as XLSX from "xlsx";
 import {
   Assignment,
   StudentSubmission,
@@ -66,6 +69,7 @@ import {
   createAssignment,
   addStudentRating,
   getStudentPerformanceReview,
+  uploadRatingsExcel,
 } from "@/lib/api/assignments";
 
 // Types
@@ -77,6 +81,73 @@ interface StudentRecord {
   weeklyRating: number;
   stack: string;
 }
+
+interface ExcelPreview {
+  sheetName: string;
+  headers: string[];
+  rows: string[][];
+  totalRows: number;
+}
+
+const EXCEL_ACCEPT =
+  ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel";
+
+const EXCEL_PREVIEW_ROW_LIMIT = 50;
+
+const isExcelFile = (file: File): boolean => {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  if (extension === "xlsx" || extension === "xls") return true;
+  return (
+    file.type ===
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    file.type === "application/vnd.ms-excel"
+  );
+};
+
+const parseExcelPreview = async (file: File): Promise<ExcelPreview> => {
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: "array" });
+
+  if (workbook.SheetNames.length === 0) {
+    throw new Error("The Excel file has no sheets.");
+  }
+
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const rawRows = XLSX.utils.sheet_to_json<(string | number | boolean)[]>(
+    sheet,
+    { header: 1, defval: "" },
+  );
+
+  if (rawRows.length === 0) {
+    throw new Error("The selected sheet is empty.");
+  }
+
+  const toCell = (value: unknown) =>
+    value === null || value === undefined ? "" : String(value);
+
+  const headerRow = rawRows[0] ?? [];
+  const maxColumns = Math.max(
+    headerRow.length,
+    ...rawRows.slice(1).map((row) => row.length),
+  );
+
+  const headers = Array.from({ length: maxColumns }, (_, index) => {
+    const header = toCell(headerRow[index]).trim();
+    return header || `Column ${index + 1}`;
+  });
+
+  const dataRows = rawRows.slice(1).map((row) =>
+    Array.from({ length: maxColumns }, (_, index) => toCell(row[index])),
+  );
+
+  return {
+    sheetName,
+    headers,
+    rows: dataRows.slice(0, EXCEL_PREVIEW_ROW_LIMIT),
+    totalRows: dataRows.length,
+  };
+};
 
 // Helper to normalize stack names for API
 const normalizeStackForApi = (
@@ -1163,6 +1234,13 @@ function AdminAssessmentView() {
     useState<StudentAssessment | null>(null);
   const [showGradeDialog, setShowGradeDialog] = useState(false);
   const [showUploadTaskDialog, setShowUploadTaskDialog] = useState(false);
+  const [showBulkUploadDialog, setShowBulkUploadDialog] = useState(false);
+  const [selectedExcelFile, setSelectedExcelFile] = useState<File | null>(null);
+  const [excelPreview, setExcelPreview] = useState<ExcelPreview | null>(null);
+  const [excelParseError, setExcelParseError] = useState<string | null>(null);
+  const [isParsingExcel, setIsParsingExcel] = useState(false);
+  const [isUploadingExcel, setIsUploadingExcel] = useState(false);
+  const [isBulkDragActive, setIsBulkDragActive] = useState(false);
   const [taskFormData, setTaskFormData] = useState({
     title: "",
     description: "",
@@ -1181,6 +1259,78 @@ function AdminAssessmentView() {
     week: "1",
   });
   const [isUploadingTask, setIsUploadingTask] = useState(false);
+
+  const resetBulkUploadState = useCallback(() => {
+    setSelectedExcelFile(null);
+    setExcelPreview(null);
+    setExcelParseError(null);
+    setIsParsingExcel(false);
+    setIsUploadingExcel(false);
+    setIsBulkDragActive(false);
+  }, []);
+
+  const handleBulkUploadDialogChange = (open: boolean) => {
+    setShowBulkUploadDialog(open);
+    if (!open) {
+      resetBulkUploadState();
+    }
+  };
+
+  const processExcelFile = useCallback(async (file: File) => {
+    if (!isExcelFile(file)) {
+      toast.error("Please select an Excel file (.xlsx or .xls)");
+      return;
+    }
+
+    setSelectedExcelFile(file);
+    setExcelPreview(null);
+    setExcelParseError(null);
+    setIsParsingExcel(true);
+
+    try {
+      const preview = await parseExcelPreview(file);
+      setExcelPreview(preview);
+    } catch (error) {
+      console.error("Failed to parse Excel file:", error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to read the Excel file. Please try another file.";
+      setExcelParseError(message);
+      toast.error(message);
+    } finally {
+      setIsParsingExcel(false);
+    }
+  }, []);
+
+  const handleExcelFileInput = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) {
+      void processExcelFile(file);
+    }
+  };
+
+  const handleBulkDrag = (event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.type === "dragenter" || event.type === "dragover") {
+      setIsBulkDragActive(true);
+    } else if (event.type === "dragleave") {
+      setIsBulkDragActive(false);
+    }
+  };
+
+  const handleBulkDrop = (event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsBulkDragActive(false);
+
+    const file = event.dataTransfer.files?.[0];
+    if (file) {
+      void processExcelFile(file);
+    }
+  };
 
   // Fetch students from API
   const fetchStudents = useCallback(async () => {
@@ -1255,6 +1405,43 @@ function AdminAssessmentView() {
     }, 300);
     return () => clearTimeout(timeoutId);
   }, [fetchStudents]);
+
+  const handleBulkExcelUpload = async () => {
+    if (!selectedExcelFile) {
+      toast.error("Please select an Excel file");
+      return;
+    }
+
+    if (excelParseError) {
+      toast.error("Fix the file preview error before uploading.");
+      return;
+    }
+
+    setIsUploadingExcel(true);
+    try {
+      const response = await uploadRatingsExcel(selectedExcelFile);
+      toast.success(response.message || "Ratings uploaded successfully!");
+      setShowBulkUploadDialog(false);
+      resetBulkUploadState();
+      await fetchStudents();
+    } catch (error) {
+      console.error("Failed to upload Excel file:", error);
+      const apiError = error as ApiError;
+      let message =
+        apiError.message || "Failed to upload Excel file. Please try again.";
+
+      if (apiError.errors) {
+        const firstFieldError = Object.values(apiError.errors)[0]?.[0];
+        if (firstFieldError) {
+          message = `${message} ${firstFieldError}`;
+        }
+      }
+
+      toast.error(message);
+    } finally {
+      setIsUploadingExcel(false);
+    }
+  };
 
   const handleGradeStudent = (student: StudentAssessment) => {
     setSelectedStudent(student);
@@ -1404,6 +1591,13 @@ function AdminAssessmentView() {
         >
           <Plus className="h-4 w-4" />
           Upload Task
+        </Button>
+        <Button
+          onClick={() => setShowBulkUploadDialog(true)}
+          className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] rounded-full px-6 py-2.5 font-medium flex items-center gap-2 shadow-md transition-all hover:shadow-lg"
+        >
+          <Plus className="h-4 w-4" />
+          Bulk Upload
         </Button>
 
         {/* Search */}
@@ -1893,6 +2087,185 @@ function AdminAssessmentView() {
                 </>
               ) : (
                 "Upload Task"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Upload Dialog */}
+      <Dialog open={showBulkUploadDialog} onOpenChange={handleBulkUploadDialogChange}>
+        <DialogContent className="sm:max-w-[720px] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Bulk Upload</DialogTitle>
+            <DialogDescription>
+              Upload a single Excel file (.xlsx or .xls) to bulk import student
+              ratings.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="min-w-0 space-y-5 py-2">
+            {!selectedExcelFile ? (
+              <div
+                className={`relative rounded-lg border-2 border-dashed p-10 text-center transition-colors ${
+                  isBulkDragActive
+                    ? "border-[#ffb703] bg-[#ffb703]/5"
+                    : "border-border hover:border-[#ffb703]/50"
+                }`}
+                onDragEnter={handleBulkDrag}
+                onDragLeave={handleBulkDrag}
+                onDragOver={handleBulkDrag}
+                onDrop={handleBulkDrop}
+              >
+                <input
+                  type="file"
+                  accept={EXCEL_ACCEPT}
+                  onChange={handleExcelFileInput}
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                />
+                <div className="flex flex-col items-center gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#ffb703]/10">
+                    <Upload className="h-7 w-7 text-[#ffb703]" />
+                  </div>
+                  <div>
+                    <p className="text-base font-medium text-foreground">
+                      Drag and drop an Excel file here
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      or click to browse from your computer
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Supports .xlsx and .xls (one file only)
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="min-w-0 space-y-4">
+                <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 p-4">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#ffb703]/10">
+                      <FileSpreadsheet className="h-5 w-5 text-[#ffb703]" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {selectedExcelFile.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {(selectedExcelFile.size / 1024).toFixed(1)} KB
+                        {excelPreview ? ` • Sheet: ${excelPreview.sheetName}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={resetBulkUploadState}
+                    disabled={isUploadingExcel}
+                  >
+                    Remove
+                  </Button>
+                </div>
+
+                {isParsingExcel && (
+                  <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin text-[#ffb703]" />
+                    Reading Excel file...
+                  </div>
+                )}
+
+                {excelParseError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {excelParseError}
+                  </div>
+                )}
+
+                {excelPreview && !isParsingExcel && (
+                  <div className="min-w-0 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-foreground">
+                        Preview
+                      </p>
+                      {excelPreview.totalRows > EXCEL_PREVIEW_ROW_LIMIT && (
+                        <p className="shrink-0 text-xs text-muted-foreground">
+                          Showing first {EXCEL_PREVIEW_ROW_LIMIT} of{" "}
+                          {excelPreview.totalRows} rows
+                        </p>
+                      )}
+                    </div>
+                    <div className="max-h-[280px] w-full overflow-auto rounded-md border">
+                      <Table className="w-max min-w-full">
+                        <TableHeader>
+                          <TableRow className="bg-[#ffb703]/10 hover:bg-[#ffb703]/10">
+                            {excelPreview.headers.map((header, index) => (
+                              <TableHead
+                                key={`${header}-${index}`}
+                                className="whitespace-nowrap px-3 text-xs font-semibold"
+                              >
+                                {header}
+                              </TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {excelPreview.rows.length > 0 ? (
+                            excelPreview.rows.map((row, rowIndex) => (
+                              <TableRow key={`preview-row-${rowIndex}`}>
+                                {excelPreview.headers.map((_, colIndex) => (
+                                  <TableCell
+                                    key={`preview-cell-${rowIndex}-${colIndex}`}
+                                    className="whitespace-nowrap px-3 text-xs"
+                                  >
+                                    {row[colIndex] || ""}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell
+                                colSpan={excelPreview.headers.length}
+                                className="py-8 text-center text-sm text-muted-foreground"
+                              >
+                                No data rows found in this sheet.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              onClick={() => handleBulkUploadDialogChange(false)}
+              disabled={isUploadingExcel}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleBulkExcelUpload}
+              disabled={
+                !selectedExcelFile ||
+                !!excelParseError ||
+                isParsingExcel ||
+                isUploadingExcel
+              }
+              className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+            >
+              {isUploadingExcel ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                "Upload"
               )}
             </Button>
           </DialogFooter>

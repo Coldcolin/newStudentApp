@@ -53,7 +53,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="font-sans antialiased" cz-shortcut-listen="true">
+      <body className="font-sans antialiased" suppressHydrationWarning>
         <ReduxProvider>
           {children}
           <Toaster
