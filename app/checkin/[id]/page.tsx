@@ -74,6 +74,9 @@ interface StudentData {
 
 // Student Attendance Card Component
 function StudentAttendanceCard({ record }: { record: AttendanceRecord }) {
+  const [isImageOpen, setIsImageOpen] = useState(false);
+  const hasImage = Boolean(record.image?.url);
+
   const formattedDate = new Date(record.date).toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
@@ -87,31 +90,65 @@ function StudentAttendanceCard({ record }: { record: AttendanceRecord }) {
     hour12: true,
   });
 
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      setIsImageOpen(true);
+    }
+  };
+
   return (
-    <Card className="border border-border shadow-sm">
-      <CardContent className="p-4 flex flex-col items-center text-center">
-        {record.image?.url && (
-          <div className="mb-3 w-full">
+    <>
+      <Card
+        className={`border border-border shadow-sm transition-shadow ${
+          hasImage ? "cursor-pointer hover:shadow-md" : ""
+        }`}
+        onClick={hasImage ? () => setIsImageOpen(true) : undefined}
+        onKeyDown={hasImage ? handleKeyDown : undefined}
+        role={hasImage ? "button" : undefined}
+        tabIndex={hasImage ? 0 : undefined}
+      >
+        <CardContent className="p-4 flex flex-col items-center text-center">
+          {record.image?.url && (
+            <div className="mb-3 w-full">
+              <img
+                src={record.image.url}
+                alt="Check-in"
+                className="w-full h-32 object-cover rounded-lg"
+              />
+            </div>
+          )}
+          <p className="text-sm text-muted-foreground">{formattedDate}</p>
+          <p className="text-sm text-muted-foreground">
+            Check-in Time:{" "}
+            <span className="font-medium text-foreground">{formattedTime}</span>
+          </p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Score:{" "}
+            <span className="font-medium text-foreground">
+              {record.punctualityScore}%
+            </span>
+          </p>
+        </CardContent>
+      </Card>
+
+      {hasImage && (
+        <Dialog open={isImageOpen} onOpenChange={setIsImageOpen}>
+          <DialogContent className="sm:max-w-3xl p-4">
+            <DialogTitle>Check-in Photo</DialogTitle>
+            <DialogDescription>
+              {formattedDate} · {formattedTime} · Score:{" "}
+              {record.punctualityScore}%
+            </DialogDescription>
             <img
-              src={record.image.url}
-              alt="Check-in"
-              className="w-full h-32 object-cover rounded-lg"
+              src={record.image!.url}
+              alt="Check-in photo"
+              className="w-full max-h-[70vh] object-contain rounded-lg"
             />
-          </div>
-        )}
-        <p className="text-sm text-muted-foreground">{formattedDate}</p>
-        <p className="text-sm text-muted-foreground">
-          Check-in Time:{" "}
-          <span className="font-medium text-foreground">{formattedTime}</span>
-        </p>
-        <p className="text-sm text-muted-foreground mt-1">
-          Score:{" "}
-          <span className="font-medium text-foreground">
-            {record.punctualityScore}%
-          </span>
-        </p>
-      </CardContent>
-    </Card>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 }
 
