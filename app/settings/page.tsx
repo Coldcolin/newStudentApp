@@ -15,8 +15,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { useEffect, useState } from "react";
+import { useCurrentUser } from "@/lib/store/hooks";
+import { useProgramSettings } from "@/components/providers/program-settings-provider";
+import { updateProgramSettings } from "@/lib/api/settings";
+
+const MAX_TOTAL_WEEKS = 52;
 
 export default function SettingsPage() {
+  const user = useCurrentUser();
+  // Tutors are mapped to the "admin" role at login, so this covers both.
+  const isAdmin = user?.role === "admin";
+
   const handleSave = () => {
     toast.success("Settings saved successfully!");
   };
@@ -30,7 +40,14 @@ export default function SettingsPage() {
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
             <TabsTrigger value="appearance">Appearance</TabsTrigger>
+            {isAdmin && <TabsTrigger value="program">Program</TabsTrigger>}
           </TabsList>
+
+          {isAdmin && (
+            <TabsContent value="program">
+              <ProgramSettingsTab />
+            </TabsContent>
+          )}
 
           <TabsContent value="general">
             <Card className="border-none shadow-sm">
@@ -272,5 +289,187 @@ export default function SettingsPage() {
         </Tabs>
       </div>
     </DashboardLayout>
+  );
+}
+
+/**
+ * The one settings tab wired to a real API. Controls the week the whole app
+ * defaults to — the dashboard greeting, the task board, and grading.
+ */
+function ProgramSettingsTab() {
+  const {
+    startDate,
+    weekOverride,
+    totalWeeks,
+    currentWeek,
+    isLoading,
+    isLoaded,
+    applySettings,
+  } = useProgramSettings();
+
+  const [form, setForm] = useState({
+    startDate: "",
+    totalWeeks: "24",
+    isPinned: false,
+    weekOverride: "1",
+  });
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Seed the form from the shared settings once they have settled.
+  useEffect(() => {
+    if (!isLoaded) return;
+    setForm({
+      startDate: startDate ?? "",
+      totalWeeks: String(totalWeeks),
+      isPinned: weekOverride !== null,
+      weekOverride: String(weekOverride ?? currentWeek),
+    });
+  }, [startDate, weekOverride, totalWeeks, currentWeek, isLoaded]);
+
+  const parsedTotalWeeks = parseInt(form.totalWeeks, 10);
+  const parsedOverride = parseInt(form.weekOverride, 10);
+
+  const handleSaveProgram = async () => {
+    if (
+      isNaN(parsedTotalWeeks) ||
+      parsedTotalWeeks < 1 ||
+      parsedTotalWeeks > MAX_TOTAL_WEEKS
+    ) {
+      toast.error(`Program length must be between 1 and ${MAX_TOTAL_WEEKS} weeks`);
+      return;
+    }
+
+    if (
+      form.isPinned &&
+      (isNaN(parsedOverride) ||
+        parsedOverride < 1 ||
+        parsedOverride > parsedTotalWeeks)
+    ) {
+      toast.error(`Pinned week must be between 1 and ${parsedTotalWeeks}`);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const { settings } = await updateProgramSettings({
+        startDate: form.startDate || null,
+        totalWeeks: parsedTotalWeeks,
+        weekOverride: form.isPinned ? parsedOverride : null,
+      });
+      // Push straight into the shared context so every page picks up the new
+      // week without a reload.
+      applySettings(settings);
+      toast.success("Program settings saved successfully!");
+    } catch (error) {
+      console.error("Failed to save program settings:", error);
+      const message =
+        error instanceof Error ? error.message : "Please try again.";
+      toast.error(`Failed to save program settings. ${message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Card className="border-none shadow-sm">
+      <CardHeader>
+        <CardTitle>Program Settings</CardTitle>
+        <CardDescription>
+          Controls the week used across the app — the dashboard greeting, the
+          task board, and grading defaults.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="rounded-lg border border-border bg-muted/40 p-4">
+          <p className="text-sm text-muted-foreground">Current week</p>
+          <p className="text-2xl font-semibold text-[#1a365d]">
+            Week {currentWeek}
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
+              {weekOverride !== null
+                ? "(pinned)"
+                : startDate
+                  ? "(from start date)"
+                  : "(no start date set)"}
+            </span>
+          </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="cohortStartDate">Cohort Start Date</Label>
+            <Input
+              id="cohortStartDate"
+              type="date"
+              value={form.startDate}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, startDate: e.target.value }))
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              The week advances automatically from this date. Weeks start on
+              Monday.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="totalWeeks">Program Length (weeks)</Label>
+            <Input
+              id="totalWeeks"
+              type="number"
+              min="1"
+              max={MAX_TOTAL_WEEKS}
+              value={form.totalWeeks}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, totalWeeks: e.target.value }))
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              Sets the range of every week picker in the app.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-4 rounded-lg border border-border p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Pin the current week</p>
+              <p className="text-sm text-muted-foreground">
+                Hold the week in place during a break, instead of letting it
+                advance from the start date.
+              </p>
+            </div>
+            <Switch
+              checked={form.isPinned}
+              onCheckedChange={(checked) =>
+                setForm((prev) => ({ ...prev, isPinned: checked }))
+              }
+            />
+          </div>
+          {form.isPinned && (
+            <div className="space-y-2">
+              <Label htmlFor="weekOverride">Pinned week</Label>
+              <Input
+                id="weekOverride"
+                type="number"
+                min="1"
+                max={form.totalWeeks}
+                value={form.weekOverride}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, weekOverride: e.target.value }))
+                }
+                className="w-full md:w-[200px]"
+              />
+            </div>
+          )}
+        </div>
+
+        <Button
+          onClick={handleSaveProgram}
+          disabled={isSaving || isLoading}
+          className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+        >
+          {isSaving ? "Saving..." : "Save Program Settings"}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

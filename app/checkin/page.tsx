@@ -352,7 +352,7 @@ function AdminAttendanceView() {
                 <TableHeader>
                   <TableRow className="border-b border-gray-100 hover:bg-transparent">
                     <TableHead className="text-xs text-muted-foreground whitespace-nowrap">
-                      Week
+                      S/N
                     </TableHead>
                     <TableHead className="text-xs text-muted-foreground whitespace-nowrap">
                       Name
@@ -374,7 +374,7 @@ function AdminAttendanceView() {
                         onClick={() => router.push(`/checkin/${student._id}`)}
                       >
                         <TableCell className="py-3 text-sm text-muted-foreground">
-                          {19 + index}
+                          {index + 1}
                         </TableCell>
                         <TableCell className="py-3">
                           <span className="text-sm font-medium">

@@ -22,6 +22,50 @@ export interface ApiError {
   errors?: Record<string, string[]>;
 }
 
+function extractApiErrorMessage(data: unknown, fallback: string): string {
+  if (typeof data === "string" && data.trim()) {
+    return data;
+  }
+
+  if (data && typeof data === "object") {
+    const body = data as Record<string, unknown>;
+
+    if (typeof body.message === "string" && body.message.trim()) {
+      return body.message;
+    }
+    if (typeof body.error === "string" && body.error.trim()) {
+      return body.error;
+    }
+
+    if (body.errors && typeof body.errors === "object") {
+      const firstFieldError = Object.values(
+        body.errors as Record<string, unknown>,
+      )
+        .flat()
+        .find((value) => typeof value === "string" && value.trim());
+      if (typeof firstFieldError === "string") {
+        return firstFieldError;
+      }
+    }
+  }
+
+  return fallback;
+}
+
+function serializeResponseBody(data: unknown): string | null {
+  if (data === undefined || data === null) {
+    return null;
+  }
+  if (typeof data === "string") {
+    return data || null;
+  }
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return String(data);
+  }
+}
+
 // Token getter function - will be set by the store
 let getAuthToken: (() => string | null) | null = null;
 let clearAuthCredentials: (() => void) | null = null;
@@ -86,7 +130,7 @@ axiosInstance.interceptors.response.use(
 
     return response;
   },
-  async (error: AxiosError<ApiError>) => {
+  async (error: AxiosError<unknown>) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;
     };
@@ -164,22 +208,42 @@ axiosInstance.interceptors.response.use(
     }
 
     // Handle other error responses
+    const responseData = error.response?.data;
+    const responseBody = serializeResponseBody(responseData);
+    const dataRecord =
+      responseData && typeof responseData === "object"
+        ? (responseData as Record<string, unknown>)
+        : null;
     const apiError: ApiError = {
-      message:
-        error.response?.data?.message || error.message || "An error occurred",
-      code: error.response?.data?.code || "UNKNOWN_ERROR",
+      message: extractApiErrorMessage(
+        responseData,
+        error.message || "An error occurred",
+      ),
+      code:
+        (typeof dataRecord?.code === "string" && dataRecord.code) ||
+        error.code ||
+        "UNKNOWN_ERROR",
       status: error.response?.status || 500,
-      errors: error.response?.data?.errors,
+      errors:
+        dataRecord?.errors && typeof dataRecord.errors === "object"
+          ? (dataRecord.errors as Record<string, string[]>)
+          : undefined,
     };
 
-    // Log errors in development
+    // Log as a string so the Next.js overlay shows details (objects render as {})
     if (process.env.NODE_ENV === "development") {
-      console.error("API Error:", {
-        url: originalRequest?.url,
-        method: originalRequest?.method,
-        status: apiError.status,
-        message: apiError.message,
-      });
+      const method = originalRequest?.method?.toUpperCase() ?? "UNKNOWN";
+      const url = originalRequest?.url ?? "unknown-url";
+      const parts = [
+        `API Error: ${method} ${url} (${apiError.status}): ${apiError.message}`,
+      ];
+      if (!error.response && error.code) {
+        parts.push(`[${error.code}]`);
+      }
+      if (responseBody) {
+        parts.push(`body: ${responseBody}`);
+      }
+      console.error(parts.join(" "));
     }
 
     return Promise.reject(apiError);

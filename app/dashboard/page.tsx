@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useCurrentUser } from "@/lib/store/hooks";
+import { useProgramSettings } from "@/components/providers/program-settings-provider";
 import Link from "next/link";
 
 // Students of the week data
@@ -85,6 +86,7 @@ interface HistoryItem {
 
 export default function DashboardPage() {
   const user = useCurrentUser();
+  const { currentWeek } = useProgramSettings();
   const [activeTab, setActiveTab] = useState("Front-End");
   const [studentsOfWeekData, setStudentsOfWeekData] = useState<
     typeof studentsOfWeek
@@ -231,7 +233,7 @@ export default function DashboardPage() {
             Hi {user?.fullName || ""}
           </h1>
           <p className="mt-1 text-muted-foreground">
-            {"It's week 5 at The Curve Africa"}
+            {`It's week ${currentWeek} at The Curve Africa`}
           </p>
         </div>
 

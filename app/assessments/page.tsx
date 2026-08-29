@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Search,
   CheckCircle2,
@@ -14,6 +14,11 @@ import {
   Calendar,
   Upload,
   FileSpreadsheet,
+  Trash2,
+  ExternalLink,
+  ChevronDown,
+  ChevronRight,
+  Pencil,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePersistedState } from "@/hooks/use-persisted-state";
@@ -53,20 +58,35 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
+import { RichText } from "@/components/ui/rich-text";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import {
+  isRichTextEmpty,
+  richTextToPlain,
+  toEditorHtml,
+} from "@/lib/rich-text";
 import { useCurrentUser } from "@/lib/store/hooks";
+import { useProgramSettings } from "@/components/providers/program-settings-provider";
 import { toast } from "sonner";
 import axiosInstance, { type ApiError } from "@/lib/api/axios";
 import * as XLSX from "xlsx";
 import {
   Assignment,
+  AssignmentStack,
+  DescriptionFormat,
+  GradingSubmission,
   StudentSubmission,
   PerformanceReviewRating,
   getAssignmentsByWeek,
   getAllAssignmentsByWeek,
+  getAllAssignments,
   getStudentSubmissions,
+  getSubmissionsByAssignment,
   submitAssignment,
   gradeSubmission,
   createAssignment,
+  updateAssignment,
+  deleteAssignment,
   addStudentRating,
   getStudentPerformanceReview,
   uploadRatingsExcel,
@@ -198,6 +218,7 @@ interface Task {
   _id: string;
   title: string;
   description: string;
+  descriptionFormat?: DescriptionFormat;
   dueDate: string;
   status: "completed" | "pending" | "in-progress";
   score?: number;
@@ -218,6 +239,255 @@ interface Submission {
 
 
 const stackTabs = ["Front-End", "Back-End", "Product Design"];
+
+// Admin view is split between the student roster and the assignment (task) board
+const adminSections = ["students", "tasks"];
+
+const assignmentStacks: AssignmentStack[] = [
+  "Front End",
+  "Back End",
+  "Product Design",
+  "General",
+];
+
+const buildWeekOptions = (totalWeeks: number) =>
+  Array.from({ length: totalWeeks }, (_, i) => i + 1);
+
+type DueFilter = "all" | "upcoming" | "overdue";
+
+const isOverdue = (assignment: Assignment) =>
+  new Date(assignment.dueDateTime).getTime() < Date.now();
+
+// The API stores grades out of 20, the UI shows them out of 100
+const toDisplayScore = (grade: number | null) =>
+  grade === null || grade === undefined ? null : grade * 5;
+
+const formatSubmittedAt = (value: string) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
+};
+
+// Shared copy: the backend hard-deletes an assignment along with every
+// submission that references it, so the warning has to be explicit.
+const deleteAssignmentWarning = (title: string) =>
+  `Deleting "${title}" also permanently deletes every student submission, grade and piece of feedback for this task. This cannot be undone.`;
+
+// ---------- Shared task form (Upload Task / Edit Task) ----------
+
+interface TaskFormData {
+  title: string;
+  description: string;
+  assignmentType: string;
+  week: string;
+  deadline: string;
+  deadlineTime: string;
+  allowLateSubmission: boolean;
+}
+
+const emptyTaskForm: TaskFormData = {
+  title: "",
+  description: "",
+  assignmentType: "general",
+  week: "",
+  deadline: "",
+  deadlineTime: "23:59",
+  allowLateSubmission: false,
+};
+
+const assignmentTypes = ["general", "frontend", "backend", "product design"];
+
+const stackByAssignmentType: Record<string, AssignmentStack> = {
+  frontend: "Front End",
+  backend: "Back End",
+  "product design": "Product Design",
+  general: "Front End", // Default to Front End for general
+};
+
+const assignmentTypeByStack: Record<string, string> = {
+  "Front End": "frontend",
+  "Back End": "backend",
+  "Product Design": "product design",
+  General: "general",
+};
+
+// Splits a stored dueDateTime into the local date/time strings the API expects back,
+// matching how the backend reassembles them (new Date(y, m - 1, d, h, min)).
+const splitDueDateTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { deadline: "", deadlineTime: "23:59" };
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return {
+    deadline: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    deadlineTime: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+  };
+};
+
+// Declared at module scope so the rich-text editor is not remounted (and does not
+// lose focus) on every keystroke in the surrounding form.
+function TaskFormFields({
+  value,
+  onChange,
+  mode,
+}: {
+  value: TaskFormData;
+  onChange: (updater: (prev: TaskFormData) => TaskFormData) => void;
+  mode: "create" | "edit";
+}) {
+  const idPrefix = mode === "edit" ? "editTask" : "newTask";
+  const { totalWeeks } = useProgramSettings();
+
+  return (
+    <div className="space-y-5 py-4">
+      {/* Task Title */}
+      <div className="space-y-2">
+        <Label htmlFor={`${idPrefix}Title`} className="text-sm font-medium">
+          Task Title
+        </Label>
+        <Input
+          id={`${idPrefix}Title`}
+          placeholder="Enter task title"
+          value={value.title}
+          onChange={(e) =>
+            onChange((prev) => ({ ...prev, title: e.target.value }))
+          }
+          className="h-12"
+        />
+      </div>
+
+      {/* Task Description */}
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">Description</Label>
+        <RichTextEditor
+          value={value.description}
+          onChange={(html) =>
+            onChange((prev) => ({ ...prev, description: html }))
+          }
+          placeholder="Describe the objective, the tasks and the submission rules…"
+        />
+        <p className="text-xs text-muted-foreground">
+          Use headings, lists and code blocks — students see the task exactly as
+          you format it here.
+        </p>
+      </div>
+
+      {/* Assignment Type */}
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">Assign To</Label>
+        <div className="flex flex-wrap gap-2">
+          {assignmentTypes.map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() =>
+                onChange((prev) => ({ ...prev, assignmentType: type }))
+              }
+              className={`rounded-full px-4 py-2 text-sm font-medium transition-all border ${
+                value.assignmentType === type
+                  ? "bg-[#ffb703] text-[#08022b] border-[#ffb703]"
+                  : "bg-white text-foreground border-gray-200 hover:border-gray-300"
+              }`}
+            >
+              {type.charAt(0).toUpperCase() + type.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Week */}
+      <div className="space-y-2">
+        <Label htmlFor={`${idPrefix}Week`} className="text-sm font-medium">
+          Week
+        </Label>
+        <Input
+          id={`${idPrefix}Week`}
+          type="number"
+          min="1"
+          max={totalWeeks}
+          placeholder={`Enter week number (1-${totalWeeks})`}
+          value={value.week}
+          // The API does not accept a week change on update, and the deadline is
+          // validated against the week only at creation time.
+          disabled={mode === "edit"}
+          onChange={(e) =>
+            onChange((prev) => ({ ...prev, week: e.target.value }))
+          }
+          className="h-12 disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        {mode === "edit" && (
+          <p className="text-xs text-muted-foreground">
+            The week cannot be changed after a task is created.
+          </p>
+        )}
+      </div>
+
+      {/* Deadline Date & Time */}
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">Deadline</Label>
+        <div className="flex gap-3">
+          <Input
+            id={`${idPrefix}Deadline`}
+            type="date"
+            value={value.deadline}
+            onChange={(e) =>
+              onChange((prev) => ({ ...prev, deadline: e.target.value }))
+            }
+            className="h-12 flex-1"
+          />
+          <Input
+            id={`${idPrefix}DeadlineTime`}
+            type="time"
+            value={value.deadlineTime}
+            onChange={(e) =>
+              onChange((prev) => ({ ...prev, deadlineTime: e.target.value }))
+            }
+            className="h-12 w-32"
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Deadline must be within the specified week (Sunday 23:59 of the week)
+        </p>
+      </div>
+
+      {/* Allow Late Submissions Toggle */}
+      <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+        <div className="space-y-0.5">
+          <Label
+            htmlFor={`${idPrefix}AllowLate`}
+            className="text-sm font-medium"
+          >
+            Allow Late Submissions
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            Students can submit after the deadline
+          </p>
+        </div>
+        <button
+          id={`${idPrefix}AllowLate`}
+          type="button"
+          role="switch"
+          aria-checked={value.allowLateSubmission}
+          onClick={() =>
+            onChange((prev) => ({
+              ...prev,
+              allowLateSubmission: !prev.allowLateSubmission,
+            }))
+          }
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+            value.allowLateSubmission ? "bg-[#ffb703]" : "bg-gray-200"
+          }`}
+        >
+          <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+              value.allowLateSubmission ? "translate-x-6" : "translate-x-1"
+            }`}
+          />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // Student Assessment View Component - with Tasks, Review, Submissions tabs
 function StudentAssessmentView({
@@ -246,15 +516,18 @@ function StudentAssessmentView({
   const [submissions, setSubmissions] = useState<StudentSubmission[]>([]);
   const [isLoadingAssignments, setIsLoadingAssignments] = useState(false);
   const [isLoadingSubmissions, setIsLoadingSubmissions] = useState(false);
-  const [selectedWeek, setSelectedWeek] = useState(1); // Week selector state
+  // null until the program settings arrive, so the picker can default to the
+  // configured current week without clobbering a selection the user has made.
+  const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
+  const { currentWeek, totalWeeks, isLoaded } = useProgramSettings();
+  const weekOptions = useMemo(() => buildWeekOptions(totalWeeks), [totalWeeks]);
 
-  // Calculate current week based on date (for default selection)
-  const getCurrentWeek = () => {
-    const now = new Date();
-    // Assuming program starts at a specific date, calculate week number
-    // For now, default to week 1
-    return 1;
-  };
+  // Wait for the settings to settle before seeding, so the picker does not latch
+  // onto the placeholder week 1 while the real value is still in flight.
+  useEffect(() => {
+    if (!isLoaded) return;
+    setSelectedWeek((week) => week ?? currentWeek);
+  }, [isLoaded, currentWeek]);
 
   // Task submission modal state (for students)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -262,6 +535,14 @@ function StudentAssessmentView({
   const [submissionLink, setSubmissionLink] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGrading, setIsGrading] = useState(false);
+
+  // Which task card has its full description expanded
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+
+  // Task deletion state (admin only)
+  const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
+  const [isDeletingTask, setIsDeletingTask] = useState(false);
+  const [assignmentsRefreshKey, setAssignmentsRefreshKey] = useState(0);
 
   // Performance review (Review tab) state
   const [performanceRatings, setPerformanceRatings] = useState<
@@ -273,6 +554,10 @@ function StudentAssessmentView({
 
   // Fetch assignments and submissions
   useEffect(() => {
+    // Wait for the program settings to resolve the default week, so the first
+    // fetch is not wasted on a week the user is about to be moved off.
+    if (selectedWeek === null) return;
+
     const fetchData = async () => {
       console.log(
         "[DEBUG] fetchData - isAdminViewing:",
@@ -333,10 +618,24 @@ function StudentAssessmentView({
     };
 
     fetchData();
-  }, [selectedWeek, isAdminViewing, studentStack, studentId, user]);
+  }, [
+    selectedWeek,
+    isAdminViewing,
+    studentStack,
+    studentId,
+    user,
+    assignmentsRefreshKey,
+  ]);
+
+  // Collapse any open task description when the week's task list changes
+  useEffect(() => {
+    setExpandedTaskId(null);
+  }, [selectedWeek]);
 
   // Fetch submissions on initial mount if submissions tab is active
   useEffect(() => {
+    if (selectedWeek === null) return;
+
     if (activeTab === "submissions") {
       const fetchSubmissions = async () => {
         setIsLoadingSubmissions(true);
@@ -420,6 +719,7 @@ function StudentAssessmentView({
       _id: assignment._id,
       title: assignment.title,
       description: assignment.taskDescription,
+      descriptionFormat: assignment.descriptionFormat,
       dueDate: assignment.dueDateTime,
       status,
       score: submission?.grade ? submission.grade * 5 : undefined, // Convert 0-20 to 0-100
@@ -457,6 +757,25 @@ function StudentAssessmentView({
     setIsTaskSubmitModalOpen(true);
   };
 
+  const handleDeleteTask = async () => {
+    if (!taskToDelete) return;
+
+    setIsDeletingTask(true);
+    try {
+      await deleteAssignment(taskToDelete._id);
+      toast.success("Task deleted successfully");
+      setTaskToDelete(null);
+      // Re-run the week fetch so the deleted task (and its submissions) drop out
+      setAssignmentsRefreshKey((key) => key + 1);
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error("Failed to delete task:", error);
+      toast.error(apiError.message || "Failed to delete task");
+    } finally {
+      setIsDeletingTask(false);
+    }
+  };
+
   const handleTaskSubmit = async () => {
     if (!submissionLink.trim()) {
       toast.error("Please enter a submission link");
@@ -482,8 +801,11 @@ function StudentAssessmentView({
         setSubmissions(submissionsData.submissions || []);
       }
     } catch (error) {
-      console.error("Failed to submit assignment:", error);
-      toast.error("Failed to submit assignment. Please try again.");
+      const apiError = error as ApiError;
+      const message =
+        apiError.message || "Failed to submit assignment. Please try again.";
+      console.error(`Failed to submit assignment: ${message}`);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -543,19 +865,14 @@ function StudentAssessmentView({
     setActiveTab(value);
 
     if (value === "submissions") {
+      const week = selectedWeek ?? currentWeek;
       setIsLoadingSubmissions(true);
       try {
         if (!isAdminViewing && user?.id) {
-          const submissionsData = await getStudentSubmissions(
-            user.id,
-            selectedWeek,
-          );
+          const submissionsData = await getStudentSubmissions(user.id, week);
           setSubmissions(submissionsData.submissions || []);
         } else if (studentId) {
-          const submissionsData = await getStudentSubmissions(
-            studentId,
-            selectedWeek,
-          );
+          const submissionsData = await getStudentSubmissions(studentId, week);
           setSubmissions(submissionsData.submissions || []);
         }
       } catch (error) {
@@ -617,11 +934,11 @@ function StudentAssessmentView({
           </Label>
           <select
             id="week-select"
-            value={selectedWeek}
+            value={selectedWeek ?? currentWeek}
             onChange={(e) => setSelectedWeek(Number(e.target.value))}
             className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
-            {Array.from({ length: 12 }, (_, i) => i + 1).map((week) => (
+            {weekOptions.map((week) => (
               <option key={week} value={week}>
                 Week {week}
               </option>
@@ -696,48 +1013,96 @@ function StudentAssessmentView({
                 </div>
               ) : tasks.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
-                  <p>No assignments found for week {selectedWeek}.</p>
+                  <p>No assignments found for week {selectedWeek ?? currentWeek}.</p>
                   <p className="text-sm mt-2">
                     Check back later for new tasks.
                   </p>
                 </div>
               ) : (
-                tasks.map((task) => (
-                  <div
-                    key={task._id}
-                    onClick={() => handleTaskClick(task)}
-                    className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-border rounded-lg hover:bg-gray-50/50 transition-colors gap-3 ${
-                      !isAdminViewing && task.status === "pending"
-                        ? "cursor-pointer hover:border-[#ffb703]/50"
-                        : ""
-                    }`}
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="font-medium text-foreground">
-                          {task.title}
-                        </h4>
-                        <Badge className={getStatusColor(task.status)}>
-                          {task.status.charAt(0).toUpperCase() +
-                            task.status.slice(1).replace("-", " ")}
-                        </Badge>
+                tasks.map((task) => {
+                  const isExpanded = expandedTaskId === task._id;
+                  // Only offer the toggle when the preview actually hides something.
+                  const isExpandable =
+                    richTextToPlain(task.description, task.descriptionFormat)
+                      .length > 140;
+
+                  return (
+                    <div
+                      key={task._id}
+                      onClick={() => handleTaskClick(task)}
+                      className={`flex flex-col sm:flex-row sm:items-start justify-between p-4 border border-border rounded-lg hover:bg-gray-50/50 transition-colors gap-3 ${
+                        !isAdminViewing && task.status === "pending"
+                          ? "cursor-pointer hover:border-[#ffb703]/50"
+                          : ""
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-medium text-foreground">
+                            {task.title}
+                          </h4>
+                          <Badge className={getStatusColor(task.status)}>
+                            {task.status.charAt(0).toUpperCase() +
+                              task.status.slice(1).replace("-", " ")}
+                          </Badge>
+                        </div>
+                        <div className="mt-1">
+                          <RichText
+                            content={task.description}
+                            format={task.descriptionFormat}
+                            clamp={isExpanded || !isExpandable ? undefined : 2}
+                          />
+                        </div>
+                        <div className="flex items-center gap-3 flex-wrap mt-2">
+                          {isExpandable && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                // The card itself opens the submit modal.
+                                e.stopPropagation();
+                                setExpandedTaskId(isExpanded ? null : task._id);
+                              }}
+                              className="inline-flex items-center gap-1 text-xs font-medium text-[#219ebc] hover:underline"
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              ) : (
+                                <ChevronRight className="h-3.5 w-3.5" />
+                              )}
+                              {isExpanded ? "Hide details" : "View details"}
+                            </button>
+                          )}
+                          <p className="text-xs text-muted-foreground">
+                            Due: {new Date(task.dueDate).toLocaleDateString()}
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {task.description}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Due: {new Date(task.dueDate).toLocaleDateString()}
-                      </p>
+                      {(task.score || isAdminViewing) && (
+                        <div className="flex items-center gap-3 sm:justify-end">
+                          {task.score && (
+                            <span className="text-2xl font-bold text-[#34a853]">
+                              {task.score}%
+                            </span>
+                          )}
+                          {isAdminViewing && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Delete ${task.title}`}
+                              className="h-8 w-8 text-[#ec1c24] hover:bg-[#ec1c24]/10 hover:text-[#ec1c24]"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTaskToDelete(task);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {task.score && (
-                      <div className="text-right">
-                        <span className="text-2xl font-bold text-[#34a853]">
-                          {task.score}%
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                ))
+                  );
+                })
               )}
             </CardContent>
           </Card>
@@ -1153,9 +1518,12 @@ function StudentAssessmentView({
                     (selectedTask?.status.slice(1).replace("-", " ") || "")}
                 </Badge>
               </div>
-              <p className="text-sm text-muted-foreground">
-                {selectedTask?.description}
-              </p>
+              <div className="max-h-[240px] overflow-y-auto pr-1">
+                <RichText
+                  content={selectedTask?.description}
+                  format={selectedTask?.descriptionFormat}
+                />
+              </div>
               <div className="flex items-center gap-2 text-sm">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 <span className="text-muted-foreground">
@@ -1212,6 +1580,46 @@ function StudentAssessmentView({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Task Confirmation (admin only) */}
+      <Dialog
+        open={taskToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setTaskToDelete(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this task?</DialogTitle>
+            <DialogDescription>
+              {taskToDelete ? deleteAssignmentWarning(taskToDelete.title) : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setTaskToDelete(null)}
+              disabled={isDeletingTask}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-[#ec1c24] text-white hover:bg-[#ec1c24]/90"
+              onClick={handleDeleteTask}
+              disabled={isDeletingTask}
+            >
+              {isDeletingTask ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1219,12 +1627,39 @@ function StudentAssessmentView({
 // Admin Assessment View Component
 function AdminAssessmentView() {
   const router = useRouter();
+  const [adminSection, setAdminSection] = usePersistedState(
+    "thecurve:assessments:admin-section",
+    "students",
+    adminSections,
+  );
   const [activeTab, setActiveTab] = usePersistedState(
     "thecurve:assessments:admin-stack",
     "Front-End",
     stackTabs,
   );
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Assignment (task) board state
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [isLoadingAssignments, setIsLoadingAssignments] = useState(false);
+  // null until the program settings arrive; the effect below seeds it with the
+  // configured current week without overriding a filter the tutor has changed.
+  const [taskWeek, setTaskWeek] = useState<"all" | number | null>(null);
+  const [taskStack, setTaskStack] = useState<"all" | AssignmentStack>("all");
+  const [taskDue, setTaskDue] = useState<DueFilter>("all");
+  const [taskSearch, setTaskSearch] = useState("");
+  const [assignmentToDelete, setAssignmentToDelete] =
+    useState<Assignment | null>(null);
+  const [isDeletingAssignment, setIsDeletingAssignment] = useState(false);
+
+  // Per-assignment submissions dialog
+  const [submissionsAssignment, setSubmissionsAssignment] =
+    useState<Assignment | null>(null);
+  const [assignmentSubmissions, setAssignmentSubmissions] = useState<
+    GradingSubmission[]
+  >([]);
+  const [isLoadingAssignmentSubmissions, setIsLoadingAssignmentSubmissions] =
+    useState(false);
   const [isLoading, setIsLoading] = useState(false);
   // const [students, setStudents] = useState<StudentAssessment[]>(
   //   mockStudentAssessments,
@@ -1241,23 +1676,37 @@ function AdminAssessmentView() {
   const [isParsingExcel, setIsParsingExcel] = useState(false);
   const [isUploadingExcel, setIsUploadingExcel] = useState(false);
   const [isBulkDragActive, setIsBulkDragActive] = useState(false);
-  const [taskFormData, setTaskFormData] = useState({
-    title: "",
-    description: "",
-    assignmentType: "general",
-    week: "",
-    deadline: "",
-    deadlineTime: "23:59",
-    allowLateSubmission: false,
-  });
+  const [taskFormData, setTaskFormData] = useState<TaskFormData>(emptyTaskForm);
+
+  // Edit task state (tutors only)
+  const [assignmentToEdit, setAssignmentToEdit] = useState<Assignment | null>(
+    null,
+  );
+  const [editTaskFormData, setEditTaskFormData] =
+    useState<TaskFormData>(emptyTaskForm);
+  const [isSavingTask, setIsSavingTask] = useState(false);
+
   const [gradeData, setGradeData] = useState({
     punctuality: "20",
     attendance: "20",
     classTask: "20",
     assignments: "20",
     personalDefence: "20",
-    week: "1",
+    week: "",
   });
+
+  const { currentWeek, totalWeeks, isLoaded } = useProgramSettings();
+  const weekOptions = useMemo(() => buildWeekOptions(totalWeeks), [totalWeeks]);
+
+  // Seed the week-dependent defaults once the program settings have settled —
+  // seeding earlier would latch onto the placeholder week 1.
+  useEffect(() => {
+    if (!isLoaded) return;
+    setTaskWeek((week) => week ?? currentWeek);
+    setGradeData((prev) =>
+      prev.week ? prev : { ...prev, week: String(currentWeek) },
+    );
+  }, [isLoaded, currentWeek]);
   const [isUploadingTask, setIsUploadingTask] = useState(false);
 
   const resetBulkUploadState = useCallback(() => {
@@ -1380,7 +1829,7 @@ function AdminAssessmentView() {
             : activeTab === "Back-End"
               ? "Backend Development"
               : "Product Design",
-        week: student.weeklyRating ? 5 : null,
+        week: student.weeklyRating ? currentWeek : null,
         hasCheck: student.weeklyRating !== null,
         avgPercent: student.overallRating ? `${student.overallRating}%` : null,
         avatar: `/placeholder.svg?height=40&width=40&query=student%20${index + 1}`,
@@ -1397,14 +1846,107 @@ function AdminAssessmentView() {
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, activeTab]);
+  }, [searchQuery, activeTab, currentWeek]);
 
   useEffect(() => {
+    if (adminSection !== "students") return;
     const timeoutId = setTimeout(() => {
       fetchStudents();
     }, 300);
     return () => clearTimeout(timeoutId);
-  }, [fetchStudents]);
+  }, [fetchStudents, adminSection]);
+
+  // Fetch every assignment across all weeks and stacks. This endpoint takes no
+  // query params, so filtering below happens in memory rather than by refetching.
+  const fetchAssignments = useCallback(async () => {
+    setIsLoadingAssignments(true);
+    try {
+      const data = await getAllAssignments();
+      setAssignments(data.assignments || []);
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error("Failed to fetch assignments:", error);
+      toast.error(apiError.message || "Failed to load tasks");
+      setAssignments([]);
+    } finally {
+      setIsLoadingAssignments(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (adminSection !== "tasks") return;
+    fetchAssignments();
+  }, [adminSection, fetchAssignments]);
+
+  const filteredAssignments = useMemo(() => {
+    const query = taskSearch.trim().toLowerCase();
+
+    return assignments
+      .filter((assignment) => {
+        // null means the settings have not landed yet — do not filter on week.
+        if (taskWeek !== "all" && taskWeek !== null && assignment.week !== taskWeek)
+          return false;
+        if (taskStack !== "all" && assignment.stack !== taskStack) return false;
+
+        if (taskDue !== "all") {
+          const overdue = isOverdue(assignment);
+          if (taskDue === "overdue" && !overdue) return false;
+          if (taskDue === "upcoming" && overdue) return false;
+        }
+
+        if (query) {
+          // Match on the description's text, not on its markup.
+          const haystack =
+            `${assignment.title} ${richTextToPlain(
+              assignment.taskDescription,
+              assignment.descriptionFormat,
+            )}`.toLowerCase();
+          if (!haystack.includes(query)) return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        if (b.week !== a.week) return b.week - a.week;
+        return (
+          new Date(a.dueDateTime).getTime() - new Date(b.dueDateTime).getTime()
+        );
+      });
+  }, [assignments, taskWeek, taskStack, taskDue, taskSearch]);
+
+  const handleDeleteAssignment = async () => {
+    if (!assignmentToDelete) return;
+
+    setIsDeletingAssignment(true);
+    try {
+      await deleteAssignment(assignmentToDelete._id);
+      toast.success("Task deleted successfully");
+      setAssignmentToDelete(null);
+      await fetchAssignments();
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error("Failed to delete assignment:", error);
+      toast.error(apiError.message || "Failed to delete task");
+    } finally {
+      setIsDeletingAssignment(false);
+    }
+  };
+
+  const handleViewSubmissions = async (assignment: Assignment) => {
+    setSubmissionsAssignment(assignment);
+    setAssignmentSubmissions([]);
+    setIsLoadingAssignmentSubmissions(true);
+    try {
+      const data = await getSubmissionsByAssignment(assignment._id);
+      setAssignmentSubmissions(data.submissions || []);
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error("Failed to fetch submissions for assignment:", error);
+      toast.error(apiError.message || "Failed to load submissions");
+    } finally {
+      setIsLoadingAssignmentSubmissions(false);
+    }
+  };
 
   const handleBulkExcelUpload = async () => {
     if (!selectedExcelFile) {
@@ -1466,8 +2008,8 @@ function AdminAssessmentView() {
     if (!selectedStudent) return;
 
     const weekNum = parseInt(gradeData.week, 10);
-    if (isNaN(weekNum) || weekNum < 1) {
-      toast.error("Please enter a valid week number");
+    if (isNaN(weekNum) || weekNum < 1 || weekNum > totalWeeks) {
+      toast.error(`Please enter a week number between 1 and ${totalWeeks}`);
       return;
     }
 
@@ -1491,7 +2033,7 @@ function AdminAssessmentView() {
         classTask: "20",
         assignments: "20",
         personalDefence: "20",
-        week: "1",
+        week: String(currentWeek),
       });
     } catch (error) {
       console.error("Failed to save grade:", error);
@@ -1504,7 +2046,8 @@ function AdminAssessmentView() {
   const handleUploadTask = async () => {
     if (
       !taskFormData.title ||
-      !taskFormData.description ||
+      // The editor emits "<p></p>" for an empty document, which is truthy.
+      isRichTextEmpty(taskFormData.description) ||
       !taskFormData.deadline ||
       !taskFormData.week
     ) {
@@ -1514,21 +2057,10 @@ function AdminAssessmentView() {
 
     // Validate week number
     const weekNum = parseInt(taskFormData.week, 10);
-    if (isNaN(weekNum) || weekNum < 1) {
-      toast.error("Please enter a valid week number");
+    if (isNaN(weekNum) || weekNum < 1 || weekNum > totalWeeks) {
+      toast.error(`Please enter a week number between 1 and ${totalWeeks}`);
       return;
     }
-
-    // Map assignment type to stack
-    const stackMap: Record<
-      string,
-      "Front End" | "Back End" | "Product Design"
-    > = {
-      frontend: "Front End",
-      backend: "Back End",
-      "product design": "Product Design",
-      general: "Front End", // Default to Front End for general
-    };
 
     setIsUploadingTask(true);
     try {
@@ -1536,7 +2068,8 @@ function AdminAssessmentView() {
         week: weekNum,
         title: taskFormData.title,
         taskDescription: taskFormData.description,
-        stack: stackMap[taskFormData.assignmentType] || "Front End",
+        descriptionFormat: "html",
+        stack: stackByAssignmentType[taskFormData.assignmentType] || "Front End",
         dueDate: taskFormData.deadline,
         dueTime: taskFormData.deadlineTime,
         allowLateSubmissions: taskFormData.allowLateSubmission,
@@ -1544,15 +2077,9 @@ function AdminAssessmentView() {
 
       toast.success(`Task "${taskFormData.title}" uploaded successfully!`);
       setShowUploadTaskDialog(false);
-      setTaskFormData({
-        title: "",
-        description: "",
-        assignmentType: "general",
-        week: "",
-        deadline: "",
-        deadlineTime: "23:59",
-        allowLateSubmission: false,
-      });
+      setTaskFormData(emptyTaskForm);
+      // Keep the task board in sync with the newly created assignment
+      await fetchAssignments();
     } catch (error) {
       console.error("Failed to upload task:", error);
       toast.error("Failed to upload task. Please try again.");
@@ -1561,29 +2088,118 @@ function AdminAssessmentView() {
     }
   };
 
+  const handleOpenEditTask = (assignment: Assignment) => {
+    const { deadline, deadlineTime } = splitDueDateTime(assignment.dueDateTime);
+
+    setEditTaskFormData({
+      title: assignment.title,
+      // A legacy plain-text task is lifted into paragraphs so editing upgrades it
+      // rather than showing its punctuation as markup.
+      description: toEditorHtml(
+        assignment.taskDescription,
+        assignment.descriptionFormat,
+      ),
+      assignmentType: assignmentTypeByStack[assignment.stack] ?? "general",
+      week: String(assignment.week),
+      deadline,
+      deadlineTime,
+      allowLateSubmission: assignment.allowLateSubmissions,
+    });
+    setAssignmentToEdit(assignment);
+  };
+
+  const handleSaveTask = async () => {
+    if (!assignmentToEdit) return;
+
+    if (
+      !editTaskFormData.title ||
+      isRichTextEmpty(editTaskFormData.description) ||
+      !editTaskFormData.deadline
+    ) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    // The API only updates the fields it is given, so the stack is sent only when
+    // the tutor actually changed it — that keeps a "General" task from being
+    // rewritten to "Front End" by an untouched pill.
+    const originalAssignmentType =
+      assignmentTypeByStack[assignmentToEdit.stack] ?? "general";
+    const stackChanged =
+      editTaskFormData.assignmentType !== originalAssignmentType;
+
+    setIsSavingTask(true);
+    try {
+      await updateAssignment(assignmentToEdit._id, {
+        title: editTaskFormData.title,
+        taskDescription: editTaskFormData.description,
+        descriptionFormat: "html",
+        ...(stackChanged
+          ? {
+              stack:
+                stackByAssignmentType[editTaskFormData.assignmentType] ||
+                "Front End",
+            }
+          : {}),
+        dueDate: editTaskFormData.deadline,
+        dueTime: editTaskFormData.deadlineTime,
+        allowLateSubmissions: editTaskFormData.allowLateSubmission,
+      });
+
+      toast.success(`Task "${editTaskFormData.title}" updated successfully!`);
+      setAssignmentToEdit(null);
+      await fetchAssignments();
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error("Failed to update task:", error);
+      toast.error(apiError.message || "Failed to update task");
+    } finally {
+      setIsSavingTask(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Title */}
       <h1 className="text-2xl font-bold text-foreground">Student Assessment</h1>
 
+      {/* Section Switch: student roster vs. assignment board */}
+      <div className="flex flex-wrap gap-2 border-b border-border pb-4">
+        {adminSections.map((section) => (
+          <button
+            key={section}
+            onClick={() => setAdminSection(section)}
+            className={`rounded-full px-5 py-2 text-sm font-medium capitalize transition-colors ${
+              adminSection === section
+                ? "bg-[#ffb703] text-[#08022b]"
+                : "bg-white text-foreground hover:bg-gray-100 border border-border"
+            }`}
+          >
+            {section}
+          </button>
+        ))}
+      </div>
+
       {/* Tabs and Search Row */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         {/* Stack Tabs */}
-        <div className="flex flex-wrap gap-2">
-          {stackTabs.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab === tab
-                  ? "bg-[#ffb703] text-[#08022b]"
-                  : "bg-white text-foreground hover:bg-gray-100 border border-border"
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
+        {adminSection === "students" && (
+          <div className="flex flex-wrap gap-2">
+            {stackTabs.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                  activeTab === tab
+                    ? "bg-[#ffb703] text-[#08022b]"
+                    : "bg-white text-foreground hover:bg-gray-100 border border-border"
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+        )}
 
         <Button
           onClick={() => setShowUploadTaskDialog(true)}
@@ -1601,146 +2217,499 @@ function AdminAssessmentView() {
         </Button>
 
         {/* Search */}
-        <div className="relative w-full md:w-64">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 bg-white border-gray-200"
-          />
-        </div>
+        {adminSection === "students" && (
+          <div className="relative w-full md:w-64">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 bg-white border-gray-200"
+            />
+          </div>
+        )}
       </div>
 
       {/* Students Table */}
-      <Card className="border-none shadow-sm overflow-hidden">
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-[#ffb703]" />
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-[#ffb703]/10 hover:bg-[#ffb703]/10">
-                    <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
-                      #
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
-                      IMAGE
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
-                      FULL NAME(F/L)
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
-                      STACK
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
-                      WEEK
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
-                      AV%
-                    </TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {students.map((student, index) => (
-                    <TableRow
-                      key={`${student._id}-${index}`}
-                      className="hover:bg-gray-50/50"
-                    >
-                      <TableCell className="py-3 text-sm text-muted-foreground">
-                        {index + 1}
-                      </TableCell>
-                      <TableCell className="py-3">
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage
-                            src={
-                              student.avatar ||
-                              `/placeholder.svg?height=40&width=40&query=student%20${index}`
-                            }
-                          />
-                          <AvatarFallback className="bg-[#ffb703]/20 text-xs">
-                            {student.name
-                              .split(" ")
-                              .map((n) => n[0])
-                              .join("")}
-                          </AvatarFallback>
-                        </Avatar>
-                      </TableCell>
-                      <TableCell className="py-3">
-                        <span className="text-sm font-medium">
-                          {student.name}
-                        </span>
-                      </TableCell>
-                      <TableCell className="py-3 text-sm text-muted-foreground">
-                        {student.stack}
-                      </TableCell>
-                      <TableCell className="py-3">
-                        {student.week && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">{student.week}</span>
-                            {student.hasCheck && (
-                              <CheckCircle2 className="h-5 w-5 text-[#34a853]" />
-                            )}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="py-3">
-                        {student.avgPercent && (
-                          <span className="text-sm font-medium text-[#34a853]">
-                            {student.avgPercent}
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="py-3">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem
-                              onClick={() =>
-                                router.push(`/students/${student._id}`)
-                              }
-                              className="bg-[#ffb703]/10 text-foreground"
-                            >
-                              View Profile
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleTaskBoard(student)}
-                            >
-                              Task Board
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleGradeStudent(student)}
-                            >
-                              Grade Student
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleReviewAttendance(student)}
-                            >
-                              Review Attendance
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
+      {adminSection === "students" && (
+        <Card className="border-none shadow-sm overflow-hidden">
+          <CardContent className="p-0">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-[#ffb703]" />
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-[#ffb703]/10 hover:bg-[#ffb703]/10">
+                      <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                        #
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                        IMAGE
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                        FULL NAME(F/L)
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                        STACK
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                        WEEK
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                        AV%
+                      </TableHead>
+                      <TableHead className="w-[50px]"></TableHead>
                     </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {students.map((student, index) => (
+                      <TableRow
+                        key={`${student._id}-${index}`}
+                        className="hover:bg-gray-50/50"
+                      >
+                        <TableCell className="py-3 text-sm text-muted-foreground">
+                          {index + 1}
+                        </TableCell>
+                        <TableCell className="py-3">
+                          <Avatar className="h-10 w-10">
+                            <AvatarImage
+                              src={
+                                student.avatar ||
+                                `/placeholder.svg?height=40&width=40&query=student%20${index}`
+                              }
+                            />
+                            <AvatarFallback className="bg-[#ffb703]/20 text-xs">
+                              {student.name
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")}
+                            </AvatarFallback>
+                          </Avatar>
+                        </TableCell>
+                        <TableCell className="py-3">
+                          <span className="text-sm font-medium">
+                            {student.name}
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-3 text-sm text-muted-foreground">
+                          {student.stack}
+                        </TableCell>
+                        <TableCell className="py-3">
+                          {student.week && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm">{student.week}</span>
+                              {student.hasCheck && (
+                                <CheckCircle2 className="h-5 w-5 text-[#34a853]" />
+                              )}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="py-3">
+                          {student.avgPercent && (
+                            <span className="text-sm font-medium text-[#34a853]">
+                              {student.avgPercent}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="py-3">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  router.push(`/students/${student._id}`)
+                                }
+                                className="bg-[#ffb703]/10 text-foreground"
+                              >
+                                View Profile
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleTaskBoard(student)}
+                              >
+                                Task Board
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleGradeStudent(student)}
+                              >
+                                Grade Student
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleReviewAttendance(student)}
+                              >
+                                Review Attendance
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Task Board: filters + assignment table */}
+      {adminSection === "tasks" && (
+        <div className="space-y-4">
+          {/* Filters */}
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Label
+                  htmlFor="task-week-filter"
+                  className="text-sm font-medium whitespace-nowrap"
+                >
+                  Week:
+                </Label>
+                <select
+                  id="task-week-filter"
+                  value={taskWeek ?? currentWeek}
+                  onChange={(e) =>
+                    setTaskWeek(
+                      e.target.value === "all" ? "all" : Number(e.target.value),
+                    )
+                  }
+                  className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="all">All weeks</option>
+                  {weekOptions.map((week) => (
+                    <option key={week} value={week}>
+                      Week {week}
+                    </option>
                   ))}
-                </TableBody>
-              </Table>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Label
+                  htmlFor="task-stack-filter"
+                  className="text-sm font-medium whitespace-nowrap"
+                >
+                  Stack:
+                </Label>
+                <select
+                  id="task-stack-filter"
+                  value={taskStack}
+                  onChange={(e) =>
+                    setTaskStack(e.target.value as "all" | AssignmentStack)
+                  }
+                  className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="all">All stacks</option>
+                  {assignmentStacks.map((stack) => (
+                    <option key={stack} value={stack}>
+                      {stack}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Label
+                  htmlFor="task-due-filter"
+                  className="text-sm font-medium whitespace-nowrap"
+                >
+                  Due:
+                </Label>
+                <select
+                  id="task-due-filter"
+                  value={taskDue}
+                  onChange={(e) => setTaskDue(e.target.value as DueFilter)}
+                  className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="all">Any</option>
+                  <option value="upcoming">Upcoming</option>
+                  <option value="overdue">Overdue</option>
+                </select>
+              </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">
+                {filteredAssignments.length}{" "}
+                {filteredAssignments.length === 1 ? "task" : "tasks"}
+              </span>
+              <div className="relative w-full md:w-64">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search tasks"
+                  value={taskSearch}
+                  onChange={(e) => setTaskSearch(e.target.value)}
+                  className="pl-10 bg-white border-gray-200"
+                />
+              </div>
+            </div>
+          </div>
+
+          <Card className="border-none shadow-sm overflow-hidden">
+            <CardContent className="p-0">
+              {isLoadingAssignments ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-[#ffb703]" />
+                </div>
+              ) : filteredAssignments.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <p>
+                    {assignments.length === 0
+                      ? "No tasks have been created yet."
+                      : "No tasks match the current filters."}
+                  </p>
+                  <p className="text-sm mt-2">
+                    {assignments.length === 0
+                      ? "Use Upload Task to create one."
+                      : "Try widening the week, stack or due filters."}
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-[#ffb703]/10 hover:bg-[#ffb703]/10">
+                        <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                          WEEK
+                        </TableHead>
+                        <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                          TITLE
+                        </TableHead>
+                        <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                          STACK
+                        </TableHead>
+                        <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                          DUE
+                        </TableHead>
+                        <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                          LATE?
+                        </TableHead>
+                        <TableHead className="w-[50px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredAssignments.map((assignment) => (
+                        <TableRow
+                          key={assignment._id}
+                          className="hover:bg-gray-50/50"
+                        >
+                          <TableCell className="py-3 text-sm text-muted-foreground whitespace-nowrap">
+                            Week {assignment.week}
+                          </TableCell>
+                          <TableCell className="py-3">
+                            <span className="text-sm font-medium">
+                              {assignment.title}
+                            </span>
+                            <RichText
+                              content={assignment.taskDescription}
+                              format={assignment.descriptionFormat}
+                              clamp={1}
+                              className="text-xs max-w-md"
+                            />
+                          </TableCell>
+                          <TableCell className="py-3 text-sm text-muted-foreground whitespace-nowrap">
+                            {assignment.stack}
+                          </TableCell>
+                          <TableCell className="py-3">
+                            <div className="flex items-center gap-2 whitespace-nowrap">
+                              <span className="text-sm text-muted-foreground">
+                                {assignment.formattedDueDate ||
+                                  new Date(
+                                    assignment.dueDateTime,
+                                  ).toLocaleDateString()}
+                              </span>
+                              {isOverdue(assignment) && (
+                                <Badge className="bg-[#ec1c24]/10 text-[#ec1c24] hover:bg-[#ec1c24]/10">
+                                  Overdue
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-3 text-sm text-muted-foreground">
+                            {assignment.allowLateSubmissions ? "Allowed" : "—"}
+                          </TableCell>
+                          <TableCell className="py-3">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="end"
+                                className="w-48"
+                              >
+                                <DropdownMenuItem
+                                  onClick={() => handleOpenEditTask(assignment)}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                  Edit task
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleViewSubmissions(assignment)
+                                  }
+                                >
+                                  View submissions
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    setAssignmentToDelete(assignment)
+                                  }
+                                  className="text-[#ec1c24] focus:text-[#ec1c24]"
+                                >
+                                  Delete task
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Delete Task Confirmation */}
+      <Dialog
+        open={assignmentToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setAssignmentToDelete(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this task?</DialogTitle>
+            <DialogDescription>
+              {assignmentToDelete
+                ? deleteAssignmentWarning(assignmentToDelete.title)
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setAssignmentToDelete(null)}
+              disabled={isDeletingAssignment}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-[#ec1c24] text-white hover:bg-[#ec1c24]/90"
+              onClick={handleDeleteAssignment}
+              disabled={isDeletingAssignment}
+            >
+              {isDeletingAssignment ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Submissions for a single task */}
+      <Dialog
+        open={submissionsAssignment !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSubmissionsAssignment(null);
+            setAssignmentSubmissions([]);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>{submissionsAssignment?.title}</DialogTitle>
+            <DialogDescription>
+              Week {submissionsAssignment?.week} ·{" "}
+              {submissionsAssignment?.stack} · submissions for this task
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[60vh] overflow-y-auto space-y-3 py-2">
+            {isLoadingAssignmentSubmissions ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-[#ffb703]" />
+              </div>
+            ) : assignmentSubmissions.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <p>No submissions for this task yet.</p>
+              </div>
+            ) : (
+              assignmentSubmissions.map((submission) => {
+                const score = toDisplayScore(submission.grade);
+                return (
+                  <div
+                    key={submission._id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 border border-border rounded-lg"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium">
+                          {submission.student?.name || "Unknown student"}
+                        </span>
+                        {submission.isLate && (
+                          <Badge className="bg-[#ec1c24]/10 text-[#ec1c24] hover:bg-[#ec1c24]/10">
+                            Late
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Submitted {formatSubmittedAt(submission.submittedAt)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`text-sm font-semibold ${
+                          score === null
+                            ? "text-muted-foreground"
+                            : "text-[#34a853]"
+                        }`}
+                      >
+                        {score === null ? "Ungraded" : `${score}%`}
+                      </span>
+                      {submission.submissionLink && (
+                        <a
+                          href={submission.submissionLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#ffb703] hover:text-[#fb8500]"
+                          aria-label={`Open submission by ${submission.student?.name || "student"}`}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Grade Student Dialog */}
       <Dialog open={showGradeDialog} onOpenChange={setShowGradeDialog}>
@@ -1863,7 +2832,7 @@ function AdminAssessmentView() {
                 id="week"
                 type="number"
                 min="1"
-                max="12"
+                max={totalWeeks}
                 value={gradeData.week}
                 onChange={(e) =>
                   setGradeData({
@@ -1904,7 +2873,7 @@ function AdminAssessmentView() {
         open={showUploadTaskDialog}
         onOpenChange={setShowUploadTaskDialog}
       >
-        <DialogContent className="sm:max-w-[550px]">
+        <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl">Upload New Task</DialogTitle>
             <DialogDescription>
@@ -1912,160 +2881,11 @@ function AdminAssessmentView() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5 py-4">
-            {/* Task Title */}
-            <div className="space-y-2">
-              <Label htmlFor="taskTitle" className="text-sm font-medium">
-                Task Title
-              </Label>
-              <Input
-                id="taskTitle"
-                placeholder="Enter task title"
-                value={taskFormData.title}
-                onChange={(e) =>
-                  setTaskFormData({ ...taskFormData, title: e.target.value })
-                }
-                className="h-12"
-              />
-            </div>
-
-            {/* Task Description */}
-            <div className="space-y-2">
-              <Label htmlFor="taskDescription" className="text-sm font-medium">
-                Description
-              </Label>
-              <textarea
-                id="taskDescription"
-                placeholder="Enter task description"
-                value={taskFormData.description}
-                onChange={(e) =>
-                  setTaskFormData({
-                    ...taskFormData,
-                    description: e.target.value,
-                  })
-                }
-                className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              />
-            </div>
-
-            {/* Assignment Type */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Assign To</Label>
-              <div className="flex flex-wrap gap-2">
-                {["general", "frontend", "backend", "product design"].map(
-                  (type) => (
-                    <button
-                      key={type}
-                      onClick={() =>
-                        setTaskFormData({
-                          ...taskFormData,
-                          assignmentType: type,
-                        })
-                      }
-                      className={`rounded-full px-4 py-2 text-sm font-medium transition-all border ${
-                        taskFormData.assignmentType === type
-                          ? "bg-[#ffb703] text-[#08022b] border-[#ffb703]"
-                          : "bg-white text-foreground border-gray-200 hover:border-gray-300"
-                      }`}
-                    >
-                      {type.charAt(0).toUpperCase() + type.slice(1)}
-                    </button>
-                  ),
-                )}
-              </div>
-            </div>
-
-            {/* Week */}
-            <div className="space-y-2">
-              <Label htmlFor="week" className="text-sm font-medium">
-                Week
-              </Label>
-              <Input
-                id="week"
-                type="number"
-                min="1"
-                max="12"
-                placeholder="Enter week number (1-12)"
-                value={taskFormData.week}
-                onChange={(e) =>
-                  setTaskFormData({ ...taskFormData, week: e.target.value })
-                }
-                className="h-12"
-              />
-            </div>
-
-            {/* Deadline Date & Time */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Deadline</Label>
-              <div className="flex gap-3">
-                <Input
-                  id="deadline"
-                  type="date"
-                  value={taskFormData.deadline}
-                  onChange={(e) =>
-                    setTaskFormData({
-                      ...taskFormData,
-                      deadline: e.target.value,
-                    })
-                  }
-                  className="h-12 flex-1"
-                />
-                <Input
-                  id="deadlineTime"
-                  type="time"
-                  value={taskFormData.deadlineTime}
-                  onChange={(e) =>
-                    setTaskFormData({
-                      ...taskFormData,
-                      deadlineTime: e.target.value,
-                    })
-                  }
-                  className="h-12 w-32"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Deadline must be within the specified week (Sunday 23:59 of the
-                week)
-              </p>
-            </div>
-
-            {/* Allow Late Submissions Toggle */}
-            <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-              <div className="space-y-0.5">
-                <Label
-                  htmlFor="allowLateSubmission"
-                  className="text-sm font-medium"
-                >
-                  Allow Late Submissions
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Students can submit after the deadline
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  setTaskFormData({
-                    ...taskFormData,
-                    allowLateSubmission: !taskFormData.allowLateSubmission,
-                  })
-                }
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  taskFormData.allowLateSubmission
-                    ? "bg-[#ffb703]"
-                    : "bg-gray-200"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    taskFormData.allowLateSubmission
-                      ? "translate-x-6"
-                      : "translate-x-1"
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
+          <TaskFormFields
+            value={taskFormData}
+            onChange={setTaskFormData}
+            mode="create"
+          />
 
           <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button
@@ -2087,6 +2907,53 @@ function AdminAssessmentView() {
                 </>
               ) : (
                 "Upload Task"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Task Dialog (tutors only) */}
+      <Dialog
+        open={assignmentToEdit !== null}
+        onOpenChange={(open) => {
+          if (!open && !isSavingTask) setAssignmentToEdit(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Edit Task</DialogTitle>
+            <DialogDescription>
+              Update the task details. Students see the changes immediately.
+            </DialogDescription>
+          </DialogHeader>
+
+          <TaskFormFields
+            value={editTaskFormData}
+            onChange={setEditTaskFormData}
+            mode="edit"
+          />
+
+          <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              onClick={() => setAssignmentToEdit(null)}
+              disabled={isSavingTask}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveTask}
+              disabled={isSavingTask}
+              className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+            >
+              {isSavingTask ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
               )}
             </Button>
           </DialogFooter>

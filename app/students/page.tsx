@@ -16,6 +16,7 @@ import {
 import Link from "next/link";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { useCurrentUser } from "@/lib/store/hooks";
+import { useProgramSettings } from "@/components/providers/program-settings-provider";
 import axiosInstance, { api } from "@/lib/api/axios";
 
 // Types for different views
@@ -45,6 +46,7 @@ const tabs = ["Frontend", "Backend", "Product Design"];
 
 export default function StudentsPage() {
   const user = useCurrentUser();
+  const { currentWeek } = useProgramSettings();
   const [activeTab, setActiveTab] = usePersistedState(
     "thecurve:students:stack",
     "Frontend",
@@ -158,7 +160,7 @@ export default function StudentsPage() {
             Hi {user?.fullName}
           </h1>
           <p className="text-muted-foreground">
-            {"It's week 5 at The Curve Africa"}
+            {`It's week ${currentWeek} at The Curve Africa`}
           </p>
         </div>
 

@@ -1,12 +1,22 @@
 import axiosInstance from "./axios";
 
 // Types
+export type AssignmentStack =
+  | "Front End"
+  | "Back End"
+  | "Product Design"
+  | "General";
+
+/** "text" for legacy plain-text descriptions, "html" for rich-text ones. */
+export type DescriptionFormat = "text" | "html";
+
 export interface Assignment {
   _id: string;
   week: number;
   title: string;
   taskDescription: string;
-  stack: "Front End" | "Back End" | "Product Design";
+  descriptionFormat?: DescriptionFormat;
+  stack: AssignmentStack;
   dueDateTime: string;
   allowLateSubmissions: boolean;
   formattedDueDate: string;
@@ -40,6 +50,33 @@ export interface StudentSubmission {
   grade: number | null;
 }
 
+/**
+ * A submission as returned by GET /api/grading/assignment/:assignmentId, where
+ * both `assignment` and `student` come back populated.
+ */
+export interface GradingSubmission {
+  _id: string;
+  assignment: {
+    _id: string;
+    title: string;
+    week: number;
+    stack: string;
+    taskDescription?: string;
+  };
+  student: {
+    _id: string;
+    name: string;
+    image?: string;
+    stack: string;
+  };
+  submissionLink: string;
+  feedback?: string;
+  status: "Graded" | "Pending";
+  submittedAt: string;
+  isLate: boolean;
+  grade: number | null;
+}
+
 export interface GradingStudent {
   student: {
     _id: string;
@@ -65,7 +102,8 @@ export interface CreateAssignmentRequest {
   week: number;
   title: string;
   taskDescription: string;
-  stack: "Front End" | "Back End" | "Product Design";
+  descriptionFormat?: DescriptionFormat;
+  stack: AssignmentStack;
   dueDate: string;
   dueTime: string;
   allowLateSubmissions?: boolean;
@@ -311,7 +349,7 @@ export async function getSubmissionsByWeekForGrading(
  */
 export async function getSubmissionsByAssignment(
   assignmentId: string,
-): Promise<{ submissions: Submission[] }> {
+): Promise<{ submissions: GradingSubmission[] }> {
   const response = await axiosInstance.get(
     `/api/grading/assignment/${assignmentId}`,
   );

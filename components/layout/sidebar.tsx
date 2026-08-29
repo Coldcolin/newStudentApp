@@ -151,7 +151,7 @@ export function Sidebar() {
 
       {/* Secondary Navigation */}
       <div className="border-t border-sidebar-border px-4 py-4">
-        {/* {secondaryNavigation.map((item) => {
+        {secondaryNavigation.map((item) => {
           const isActive = pathname === item.href;
           return (
             <Link
@@ -174,7 +174,7 @@ export function Sidebar() {
               <span>{item.name}</span>
             </Link>
           );
-        })} */}
+        })}
 
         {/* Logout */}
         <button
