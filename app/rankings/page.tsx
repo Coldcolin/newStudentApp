@@ -123,10 +123,10 @@ export default function RankingsPage() {
 
   return (
     <DashboardLayout title="Rankings">
-      <div className="space-y-8">
+      <div className="min-w-0 space-y-8">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-[#1a365d]">
+          <h1 className="text-3xl font-bold text-foreground">
             Student Rankings
           </h1>
           <p className="mt-1 text-muted-foreground">
@@ -187,15 +187,15 @@ export default function RankingsPage() {
         </div> */}
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-3">
+        <div className="-mx-4 flex flex-nowrap gap-3 overflow-x-auto px-4 md:mx-0 md:flex-wrap md:overflow-visible md:px-0">
           {tabs.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`rounded-full px-6 py-2.5 text-sm font-medium transition-all border ${
+              className={`shrink-0 rounded-full px-6 py-2.5 text-sm font-medium transition-all border ${
                 activeTab === tab
                   ? "bg-[#ffb703] text-[#08022b] border-[#ffb703]"
-                  : "bg-white text-foreground border-gray-200 hover:border-gray-300"
+                  : "bg-card text-foreground border-border hover:bg-muted"
               }`}
             >
               {tab}
@@ -212,53 +212,121 @@ export default function RankingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              {isLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-[#ffb703]" />
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-[#ffb703]" />
+              </div>
+            ) : filteredRankings.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No rankings data available
+              </p>
+            ) : (
+              <>
+                <div className="space-y-3 px-4 pb-4 md:hidden">
+                  {filteredRankings.map((student) => (
+                    <div
+                      key={student.rank}
+                      className="mx-auto w-full max-w-[310px] rounded-lg border border-border bg-muted/40 p-4"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center">
+                          {getRankIcon(student.rank)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-9 w-9 shrink-0">
+                              <AvatarImage src="/placeholder.svg" alt={student.name} />
+                              <AvatarFallback className="bg-[#ffb703] text-xs text-[#08022b]">
+                                {student.name
+                                  .split(" ")
+                                  .map((n) => n[0])
+                                  .join("")}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-foreground">
+                                {student.name}
+                              </p>
+                              <Badge
+                                className={`mt-1 ${getStackColor(student.stack)} text-xs`}
+                              >
+                                {student.stack}
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-bold text-[#34a853]">
+                            {student.overallScore.toFixed(2)}%
+                          </p>
+                          <p className="text-xs text-muted-foreground">Overall</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <div className="rounded-md bg-background/70 px-3 py-2">
+                          <p className="text-xs text-muted-foreground">Punctuality</p>
+                          <p className="text-sm font-medium">
+                            {student.punctuality.toFixed(2)}%
+                          </p>
+                        </div>
+                        <div className="rounded-md bg-background/70 px-3 py-2">
+                          <p className="text-xs text-muted-foreground">Assignments</p>
+                          <p className="text-sm font-medium">
+                            {student.assignments.toFixed(2)}%
+                          </p>
+                        </div>
+                        <div className="rounded-md bg-background/70 px-3 py-2">
+                          <p className="text-xs text-muted-foreground">Participation</p>
+                          <p className="text-sm font-medium">
+                            {student.classParticipation.toFixed(2)}%
+                          </p>
+                        </div>
+                        <div className="rounded-md bg-background/70 px-3 py-2">
+                          <p className="text-xs text-muted-foreground">Assessment</p>
+                          <p className="text-sm font-medium">
+                            {student.classAssessment.toFixed(2)}%
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-[#ffb703]/10 hover:bg-[#ffb703]/10">
-                      <TableHead className="w-[80px] text-xs font-semibold">
-                        Rank
-                      </TableHead>
-                      <TableHead className="text-xs font-semibold">
-                        Student
-                      </TableHead>
-                      <TableHead className="text-xs font-semibold">
-                        Stack
-                      </TableHead>
-                      <TableHead className="text-xs font-semibold text-right">
-                        Overall
-                      </TableHead>
-                      <TableHead className="text-xs font-semibold text-right">
-                        Punctuality
-                      </TableHead>
-                      <TableHead className="text-xs font-semibold text-right">
-                        Assignments
-                      </TableHead>
-                      <TableHead className="text-xs font-semibold text-right">
-                        Participation
-                      </TableHead>
-                      <TableHead className="text-xs font-semibold text-right">
-                        Assessment
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredRankings.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
-                          No rankings data available
-                        </TableCell>
+
+                <div className="hidden px-2 md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-[#ffb703]/10 hover:bg-[#ffb703]/10">
+                        <TableHead className="w-[80px] text-xs font-semibold">
+                          Rank
+                        </TableHead>
+                        <TableHead className="text-xs font-semibold">
+                          Student
+                        </TableHead>
+                        <TableHead className="text-xs font-semibold">
+                          Stack
+                        </TableHead>
+                        <TableHead className="text-xs font-semibold text-right">
+                          Overall
+                        </TableHead>
+                        <TableHead className="text-xs font-semibold text-right">
+                          Punctuality
+                        </TableHead>
+                        <TableHead className="text-xs font-semibold text-right">
+                          Assignments
+                        </TableHead>
+                        <TableHead className="text-xs font-semibold text-right">
+                          Participation
+                        </TableHead>
+                        <TableHead className="text-xs font-semibold text-right">
+                          Assessment
+                        </TableHead>
                       </TableRow>
-                    ) : (
-                      filteredRankings.map((student) => (
+                    </TableHeader>
+                    <TableBody>
+                      {filteredRankings.map((student) => (
                         <TableRow
                           key={student.rank}
-                          className="hover:bg-gray-50/50 border-b border-gray-50"
+                          className="hover:bg-muted/50 border-b border-border"
                         >
                           <TableCell className="py-4">
                             <div className="flex items-center justify-center">
@@ -306,12 +374,12 @@ export default function RankingsPage() {
                             {student.classAssessment.toFixed(2)}%
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              )}
-            </div>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -328,7 +396,7 @@ export default function RankingsPage() {
               {topScorers.map((scorer, index) => (
                 <div
                   key={index}
-                  className="p-4 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-gray-50 transition-colors"
+                  className="p-4 rounded-lg border border-border bg-muted/40 hover:bg-muted transition-colors"
                 >
                   <p className="text-xs text-muted-foreground uppercase tracking-wide">
                     {scorer.title}

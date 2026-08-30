@@ -17,8 +17,10 @@ import {
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import { useCurrentUser } from "@/lib/store/hooks";
+import { useAppearance } from "@/components/providers/appearance-provider";
 import { useProgramSettings } from "@/components/providers/program-settings-provider";
 import { updateProgramSettings } from "@/lib/api/settings";
+import { cn } from "@/lib/utils";
 
 const MAX_TOTAL_WEEKS = 52;
 
@@ -35,13 +37,15 @@ export default function SettingsPage() {
     <DashboardLayout title="Settings">
       <div className="mx-auto max-w-4xl space-y-6">
         <Tabs defaultValue="general" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            <TabsTrigger value="security">Security</TabsTrigger>
-            <TabsTrigger value="appearance">Appearance</TabsTrigger>
-            {isAdmin && <TabsTrigger value="program">Program</TabsTrigger>}
-          </TabsList>
+          <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
+            <TabsList className="h-auto w-max min-w-full justify-start">
+              <TabsTrigger value="general">General</TabsTrigger>
+              {/* <TabsTrigger value="notifications">Notifications</TabsTrigger> */}
+              <TabsTrigger value="security">Security</TabsTrigger>
+              <TabsTrigger value="appearance">Appearance</TabsTrigger>
+              {isAdmin && <TabsTrigger value="program">Program</TabsTrigger>}
+            </TabsList>
+          </div>
 
           {isAdmin && (
             <TabsContent value="program">
@@ -62,7 +66,7 @@ export default function SettingsPage() {
                   <div className="space-y-2">
                     <Label htmlFor="language">Language</Label>
                     <Select defaultValue="en">
-                      <SelectTrigger>
+                      <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select language" />
                       </SelectTrigger>
                       <SelectContent>
@@ -76,7 +80,7 @@ export default function SettingsPage() {
                   <div className="space-y-2">
                     <Label htmlFor="timezone">Timezone</Label>
                     <Select defaultValue="utc">
-                      <SelectTrigger>
+                      <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select timezone" />
                       </SelectTrigger>
                       <SelectContent>
@@ -103,7 +107,7 @@ export default function SettingsPage() {
                 </div>
                 <Button
                   onClick={handleSave}
-                  className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+                  className="w-full bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] sm:w-auto"
                 >
                   Save Changes
                 </Button>
@@ -121,55 +125,55 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
                       <p className="font-medium">Email Notifications</p>
                       <p className="text-sm text-muted-foreground">
                         Receive notifications via email
                       </p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch defaultChecked className="shrink-0" />
                   </div>
-                  <div className="flex items-center justify-between">
-                    <div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
                       <p className="font-medium">Push Notifications</p>
                       <p className="text-sm text-muted-foreground">
                         Receive push notifications in browser
                       </p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch defaultChecked className="shrink-0" />
                   </div>
-                  <div className="flex items-center justify-between">
-                    <div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
                       <p className="font-medium">Assessment Reminders</p>
                       <p className="text-sm text-muted-foreground">
                         Get reminded about upcoming assessments
                       </p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch defaultChecked className="shrink-0" />
                   </div>
-                  <div className="flex items-center justify-between">
-                    <div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
                       <p className="font-medium">Grade Updates</p>
                       <p className="text-sm text-muted-foreground">
                         Get notified when grades are posted
                       </p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch defaultChecked className="shrink-0" />
                   </div>
-                  <div className="flex items-center justify-between">
-                    <div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
                       <p className="font-medium">Marketing Emails</p>
                       <p className="text-sm text-muted-foreground">
                         Receive news and promotional content
                       </p>
                     </div>
-                    <Switch />
+                    <Switch className="shrink-0" />
                   </div>
                 </div>
                 <Button
                   onClick={handleSave}
-                  className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+                  className="w-full bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] sm:w-auto"
                 >
                   Save Preferences
                 </Button>
@@ -212,18 +216,20 @@ export default function SettingsPage() {
                     />
                   </div>
                 </div>
-                <div className="flex items-center justify-between rounded-lg border border-border p-4">
-                  <div>
+                <div className="flex flex-col gap-3 rounded-lg border border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
                     <p className="font-medium">Two-Factor Authentication</p>
                     <p className="text-sm text-muted-foreground">
                       Add an extra layer of security to your account
                     </p>
                   </div>
-                  <Button variant="outline">Enable</Button>
+                  <Button variant="outline" className="w-full shrink-0 sm:w-auto">
+                    Enable
+                  </Button>
                 </div>
                 <Button
                   onClick={handleSave}
-                  className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+                  className="w-full bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] sm:w-auto"
                 >
                   Update Password
                 </Button>
@@ -232,63 +238,124 @@ export default function SettingsPage() {
           </TabsContent>
 
           <TabsContent value="appearance">
-            <Card className="border-none shadow-sm">
-              <CardHeader>
-                <CardTitle>Appearance</CardTitle>
-                <CardDescription>
-                  Customize the look and feel of the application.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Theme</Label>
-                    <div className="grid grid-cols-3 gap-4">
-                      <button className="flex flex-col items-center gap-2 rounded-lg border-2 border-[#ffb703] p-4">
-                        <div className="h-10 w-full rounded bg-white" />
-                        <span className="text-sm font-medium">Light</span>
-                      </button>
-                      <button className="flex flex-col items-center gap-2 rounded-lg border border-border p-4 hover:border-[#ffb703]/50">
-                        <div className="h-10 w-full rounded bg-[#08022b]" />
-                        <span className="text-sm font-medium">Dark</span>
-                      </button>
-                      <button className="flex flex-col items-center gap-2 rounded-lg border border-border p-4 hover:border-[#ffb703]/50">
-                        <div className="h-10 w-full rounded bg-gradient-to-r from-white to-[#08022b]" />
-                        <span className="text-sm font-medium">System</span>
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Compact Mode</p>
-                      <p className="text-sm text-muted-foreground">
-                        Use smaller UI elements for more content
-                      </p>
-                    </div>
-                    <Switch />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Reduce Motion</p>
-                      <p className="text-sm text-muted-foreground">
-                        Minimize animations throughout the app
-                      </p>
-                    </div>
-                    <Switch />
-                  </div>
-                </div>
-                <Button
-                  onClick={handleSave}
-                  className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
-                >
-                  Save Appearance
-                </Button>
-              </CardContent>
-            </Card>
+            <AppearanceSettingsTab />
           </TabsContent>
         </Tabs>
       </div>
     </DashboardLayout>
+  );
+}
+
+function AppearanceSettingsTab() {
+  const {
+    theme,
+    compact,
+    reduceMotion,
+    setTheme,
+    setCompact,
+    setReduceMotion,
+  } = useAppearance();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const activeTheme = mounted ? theme : undefined;
+
+  const handleSaveAppearance = () => {
+    toast.success("Settings saved successfully!");
+  };
+
+  return (
+    <Card className="border-none shadow-sm">
+      <CardHeader>
+        <CardTitle>Appearance</CardTitle>
+        <CardDescription>
+          Customize the look and feel of the application.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Theme</Label>
+            <div className="grid grid-cols-3 gap-2 sm:gap-4">
+              <button
+                type="button"
+                onClick={() => setTheme("light")}
+                className={cn(
+                  "flex flex-col items-center gap-2 rounded-lg p-2 sm:p-4",
+                  activeTheme === "light"
+                    ? "border-2 border-[#ffb703]"
+                    : "border border-border hover:border-[#ffb703]/50",
+                )}
+              >
+                <div className="h-8 w-full rounded bg-white sm:h-10" />
+                <span className="text-sm font-medium">Light</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTheme("dark")}
+                className={cn(
+                  "flex flex-col items-center gap-2 rounded-lg p-2 sm:p-4",
+                  activeTheme === "dark"
+                    ? "border-2 border-[#ffb703]"
+                    : "border border-border hover:border-[#ffb703]/50",
+                )}
+              >
+                <div className="h-8 w-full rounded bg-[#08022b] sm:h-10" />
+                <span className="text-sm font-medium">Dark</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTheme("system")}
+                className={cn(
+                  "flex flex-col items-center gap-2 rounded-lg p-2 sm:p-4",
+                  activeTheme === "system"
+                    ? "border-2 border-[#ffb703]"
+                    : "border border-border hover:border-[#ffb703]/50",
+                )}
+              >
+                <div className="h-8 w-full rounded bg-gradient-to-r from-white to-[#08022b] sm:h-10" />
+                <span className="text-sm font-medium">System</span>
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="font-medium">Compact Mode</p>
+              <p className="text-sm text-muted-foreground">
+                Use smaller UI elements for more content
+              </p>
+            </div>
+            <Switch
+              checked={compact}
+              onCheckedChange={setCompact}
+              className="shrink-0"
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="font-medium">Reduce Motion</p>
+              <p className="text-sm text-muted-foreground">
+                Minimize animations throughout the app
+              </p>
+            </div>
+            <Switch
+              checked={reduceMotion}
+              onCheckedChange={setReduceMotion}
+              className="shrink-0"
+            />
+          </div>
+        </div>
+        <Button
+          onClick={handleSaveAppearance}
+          className="w-full bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] sm:w-auto"
+        >
+          Save Appearance
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -382,7 +449,7 @@ function ProgramSettingsTab() {
       <CardContent className="space-y-6">
         <div className="rounded-lg border border-border bg-muted/40 p-4">
           <p className="text-sm text-muted-foreground">Current week</p>
-          <p className="text-2xl font-semibold text-[#1a365d]">
+          <p className="text-2xl font-semibold text-foreground">
             Week {currentWeek}
             <span className="ml-2 text-sm font-normal text-muted-foreground">
               {weekOverride !== null
@@ -429,8 +496,8 @@ function ProgramSettingsTab() {
         </div>
 
         <div className="space-y-4 rounded-lg border border-border p-4">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
               <p className="font-medium">Pin the current week</p>
               <p className="text-sm text-muted-foreground">
                 Hold the week in place during a break, instead of letting it
@@ -442,6 +509,7 @@ function ProgramSettingsTab() {
               onCheckedChange={(checked) =>
                 setForm((prev) => ({ ...prev, isPinned: checked }))
               }
+              className="shrink-0"
             />
           </div>
           {form.isPinned && (
@@ -465,7 +533,7 @@ function ProgramSettingsTab() {
         <Button
           onClick={handleSaveProgram}
           disabled={isSaving || isLoading}
-          className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+          className="w-full bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] sm:w-auto"
         >
           {isSaving ? "Saving..." : "Save Program Settings"}
         </Button>

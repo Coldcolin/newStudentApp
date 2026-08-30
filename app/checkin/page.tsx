@@ -318,7 +318,7 @@ function AdminAttendanceView() {
           placeholder="Search students..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10 bg-white border-gray-200"
+          className="pl-10 bg-background border-border"
         />
       </div>
 
@@ -331,7 +331,7 @@ function AdminAttendanceView() {
             className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === tab
                 ? "bg-[#ffb703] text-[#08022b]"
-                : "bg-white text-foreground hover:bg-gray-100 border border-border"
+                : "bg-card text-foreground hover:bg-muted border border-border"
             }`}
           >
             {tab}

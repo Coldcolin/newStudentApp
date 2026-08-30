@@ -207,7 +207,7 @@ export default function StudentsPage() {
             placeholder={`Search ${currentView}...`}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 bg-white border-gray-200"
+            className="pl-10 bg-background border-border"
           />
         </div>
 
@@ -221,7 +221,7 @@ export default function StudentsPage() {
                 className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
                   activeTab === tab
                     ? "bg-[#ffb703] text-[#08022b]"
-                    : "bg-white text-foreground hover:bg-gray-100 border border-gray-200"
+                    : "bg-card text-foreground hover:bg-muted border border-border"
                 }`}
               >
                 {tab}
@@ -231,7 +231,7 @@ export default function StudentsPage() {
         )}
 
         {/* Data Table */}
-        <Card className="border-none bg-white shadow-sm overflow-hidden">
+        <Card className="mx-auto w-full max-w-[320px] border-none bg-card shadow-sm overflow-hidden md:max-w-none">
           <CardContent className="p-0">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">

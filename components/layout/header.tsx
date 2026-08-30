@@ -33,7 +33,7 @@ export function Header({ title }: HeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-40 flex h-16 items-center justify-between bg-transparent px-4 md:px-6 bg-white">
+    <header className="sticky top-0 z-40 flex h-16 items-center justify-between bg-background px-4 md:px-6">
       {/* Hamburger menu - left side on mobile */}
       <div className="flex items-center">
         <MobileSidebarToggle />

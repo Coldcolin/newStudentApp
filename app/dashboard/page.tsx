@@ -60,14 +60,14 @@ const statsConfig = [
     iconBg: "bg-[#ffb703]/10",
   },
   {
-    label: "Staffs",
+    label: "Staff",
     key: "staffs",
     icon: Users,
     iconColor: "text-[#219ebc]",
     iconBg: "bg-[#219ebc]/10",
   },
   {
-    label: "Alumnis",
+    label: "Alumni",
     key: "alumnis",
     icon: Leaf,
     iconColor: "text-[#34a853]",
@@ -229,7 +229,7 @@ export default function DashboardPage() {
       <div className="space-y-8">
         {/* Welcome Section */}
         <div>
-          <h1 className="text-3xl font-bold text-[#1a365d]">
+          <h1 className="text-3xl font-bold text-foreground">
             Hi {user?.fullName || ""}
           </h1>
           <p className="mt-1 text-muted-foreground">
@@ -307,7 +307,7 @@ export default function DashboardPage() {
                 // Loading skeletons for stats
                 <>
                   {[1, 2, 3].map((i) => (
-                    <Card key={i} className="border-none bg-white shadow-sm">
+                    <Card key={i} className="border-none bg-card shadow-sm">
                       <CardContent className="flex items-center justify-center gap-4 p-4 md:justify-start">
                         <Skeleton className="h-10 w-10 rounded-lg bg-neutral-200" />
                         <div className="text-center md:text-left">
@@ -322,7 +322,7 @@ export default function DashboardPage() {
                 statsConfig.map((stat) => (
                   <Card
                     key={stat.label}
-                    className="border-none bg-white shadow-sm"
+                    className="border-none bg-card shadow-sm"
                   >
                     <CardContent className="flex items-center justify-center gap-4 p-4 md:justify-start">
                       <div className={`rounded-lg p-2 ${stat.iconBg}`}>
@@ -359,7 +359,7 @@ export default function DashboardPage() {
                 className={`rounded-full px-6 py-2.5 text-sm font-medium transition-all border ${
                   activeTab === tab
                     ? "bg-[#ffb703] text-[#08022b] border-[#ffb703]"
-                    : "bg-white text-foreground border-gray-200 hover:border-gray-300"
+                    : "bg-card text-foreground border-border hover:bg-muted"
                 }`}
               >
                 {tab}
@@ -368,7 +368,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Table - Responsive for mobile */}
-          <Card className="border-none bg-white shadow-sm overflow-hidden">
+          <Card className="border-none bg-card shadow-sm overflow-hidden">
             <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>

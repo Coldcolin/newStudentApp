@@ -3,8 +3,27 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { Toaster } from "sonner";
 import { ReduxProvider } from "@/components/providers/redux-provider";
+import { AppearanceProvider } from "@/components/providers/appearance-provider";
 import { ProgramSettingsProvider } from "@/components/providers/program-settings-provider";
 import "./globals.css";
+
+const appearanceInitScript = `
+(function() {
+  try {
+    var theme = localStorage.getItem('theme') || 'system';
+    var compact = localStorage.getItem('appearance-compact') === 'true';
+    var reduceMotion = localStorage.getItem('appearance-reduce-motion') === 'true';
+    var resolved = theme === 'system'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : theme;
+    var root = document.documentElement;
+    root.classList.toggle('dark', resolved === 'dark');
+    root.classList.toggle('compact', compact);
+    root.classList.toggle('reduce-motion', reduceMotion);
+    root.style.colorScheme = resolved === 'dark' ? 'dark' : 'light';
+  } catch (e) {}
+})();
+`;
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
@@ -54,9 +73,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: appearanceInitScript }} />
+      </head>
       <body className="font-sans antialiased" suppressHydrationWarning>
         <ReduxProvider>
-          <ProgramSettingsProvider>{children}</ProgramSettingsProvider>
+          <AppearanceProvider>
+            <ProgramSettingsProvider>{children}</ProgramSettingsProvider>
+          </AppearanceProvider>
           <Toaster
             position="top-right"
             toastOptions={{

@@ -386,7 +386,7 @@ function TaskFormFields({
               className={`rounded-full px-4 py-2 text-sm font-medium transition-all border ${
                 value.assignmentType === type
                   ? "bg-[#ffb703] text-[#08022b] border-[#ffb703]"
-                  : "bg-white text-foreground border-gray-200 hover:border-gray-300"
+                  : "bg-card text-foreground border-border hover:bg-muted"
               }`}
             >
               {type.charAt(0).toUpperCase() + type.slice(1)}
@@ -425,7 +425,7 @@ function TaskFormFields({
       {/* Deadline Date & Time */}
       <div className="space-y-2">
         <Label className="text-sm font-medium">Deadline</Label>
-        <div className="flex gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <Input
             id={`${idPrefix}Deadline`}
             type="date"
@@ -442,7 +442,7 @@ function TaskFormFields({
             onChange={(e) =>
               onChange((prev) => ({ ...prev, deadlineTime: e.target.value }))
             }
-            className="h-12 w-32"
+            className="h-12 w-full sm:w-32"
           />
         </div>
         <p className="text-xs text-muted-foreground">
@@ -903,29 +903,31 @@ function StudentAssessmentView({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        {isAdminViewing && onBack && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onBack}
-            className="h-10 w-10"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-        )}
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-foreground">
-            {isAdminViewing ? `Task Board - ${studentName}` : "My Assessments"}
-          </h1>
-          {isAdminViewing && (
-            <p className="text-sm text-muted-foreground">
-              Viewing student progress and submissions
-            </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 items-center gap-4">
+          {isAdminViewing && onBack && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onBack}
+              className="h-10 w-10 shrink-0"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
           )}
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-2xl font-bold text-foreground">
+              {isAdminViewing ? `Task Board - ${studentName}` : "My Assessments"}
+            </h1>
+            {isAdminViewing && (
+              <p className="text-sm text-muted-foreground">
+                Viewing student progress and submissions
+              </p>
+            )}
+          </div>
         </div>
         {/* Week Selector */}
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center gap-2 sm:w-auto">
           <Label
             htmlFor="week-select"
             className="text-sm font-medium whitespace-nowrap"
@@ -936,7 +938,7 @@ function StudentAssessmentView({
             id="week-select"
             value={selectedWeek ?? currentWeek}
             onChange={(e) => setSelectedWeek(Number(e.target.value))}
-            className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-auto"
           >
             {weekOptions.map((week) => (
               <option key={week} value={week}>
@@ -1139,7 +1141,9 @@ function StudentAssessmentView({
                       <TableRow>
                         <TableHead>Week</TableHead>
                         <TableHead>Assessment</TableHead>
-                        <TableHead>Date</TableHead>
+                        <TableHead className="hidden sm:table-cell">
+                          Date
+                        </TableHead>
                         <TableHead>Score</TableHead>
                         <TableHead>Status</TableHead>
                       </TableRow>
@@ -1168,12 +1172,12 @@ function StudentAssessmentView({
                             <TableCell className="font-medium">
                               Week {rating.week}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="max-w-[160px] truncate sm:max-w-none">
                               {rating.title ||
                                 rating.assessmentTitle ||
                                 `Week ${rating.week} Assessment`}
                             </TableCell>
-                            <TableCell className="text-muted-foreground">
+                            <TableCell className="hidden text-muted-foreground sm:table-cell">
                               {dateStr}
                             </TableCell>
                             <TableCell>
@@ -1505,7 +1509,7 @@ function StudentAssessmentView({
           <div className="space-y-5 py-4">
             {/* Task Info */}
             <div className="p-4 bg-gray-50 rounded-lg space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <h4 className="font-semibold text-foreground">
                   {selectedTask?.title}
                 </h4>
@@ -1588,7 +1592,7 @@ function StudentAssessmentView({
           if (!open) setTaskToDelete(null);
         }}
       >
-        <DialogContent>
+        <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle>Delete this task?</DialogTitle>
             <DialogDescription>
@@ -2172,7 +2176,7 @@ function AdminAssessmentView() {
             className={`rounded-full px-5 py-2 text-sm font-medium capitalize transition-colors ${
               adminSection === section
                 ? "bg-[#ffb703] text-[#08022b]"
-                : "bg-white text-foreground hover:bg-gray-100 border border-border"
+                : "bg-card text-foreground hover:bg-muted border border-border"
             }`}
           >
             {section}
@@ -2181,7 +2185,7 @@ function AdminAssessmentView() {
       </div>
 
       {/* Tabs and Search Row */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-center md:justify-between">
         {/* Stack Tabs */}
         {adminSection === "students" && (
           <div className="flex flex-wrap gap-2">
@@ -2192,7 +2196,7 @@ function AdminAssessmentView() {
                 className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
                   activeTab === tab
                     ? "bg-[#ffb703] text-[#08022b]"
-                    : "bg-white text-foreground hover:bg-gray-100 border border-border"
+                    : "bg-card text-foreground hover:bg-muted border border-border"
                 }`}
               >
                 {tab}
@@ -2201,20 +2205,22 @@ function AdminAssessmentView() {
           </div>
         )}
 
-        <Button
-          onClick={() => setShowUploadTaskDialog(true)}
-          className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] rounded-full px-6 py-2.5 font-medium flex items-center gap-2 shadow-md transition-all hover:shadow-lg"
-        >
-          <Plus className="h-4 w-4" />
-          Upload Task
-        </Button>
-        <Button
-          onClick={() => setShowBulkUploadDialog(true)}
-          className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] rounded-full px-6 py-2.5 font-medium flex items-center gap-2 shadow-md transition-all hover:shadow-lg"
-        >
-          <Plus className="h-4 w-4" />
-          Bulk Upload
-        </Button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <Button
+            onClick={() => setShowUploadTaskDialog(true)}
+            className="w-full bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] rounded-full px-6 py-2.5 font-medium flex items-center justify-center gap-2 shadow-md transition-all hover:shadow-lg sm:w-auto"
+          >
+            <Plus className="h-4 w-4" />
+            Upload Task
+          </Button>
+          <Button
+            onClick={() => setShowBulkUploadDialog(true)}
+            className="w-full bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] rounded-full px-6 py-2.5 font-medium flex items-center justify-center gap-2 shadow-md transition-all hover:shadow-lg sm:w-auto"
+          >
+            <Plus className="h-4 w-4" />
+            Bulk Upload
+          </Button>
+        </div>
 
         {/* Search */}
         {adminSection === "students" && (
@@ -2224,7 +2230,7 @@ function AdminAssessmentView() {
               placeholder="Search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-white border-gray-200"
+              className="pl-10 bg-background border-border"
             />
           </div>
         )}
@@ -2243,19 +2249,19 @@ function AdminAssessmentView() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-[#ffb703]/10 hover:bg-[#ffb703]/10">
-                      <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                      <TableHead className="hidden text-xs font-semibold text-foreground whitespace-nowrap md:table-cell">
                         #
                       </TableHead>
-                      <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                      <TableHead className="hidden text-xs font-semibold text-foreground whitespace-nowrap md:table-cell">
                         IMAGE
                       </TableHead>
                       <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
                         FULL NAME(F/L)
                       </TableHead>
-                      <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                      <TableHead className="hidden text-xs font-semibold text-foreground whitespace-nowrap md:table-cell">
                         STACK
                       </TableHead>
-                      <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                      <TableHead className="hidden text-xs font-semibold text-foreground whitespace-nowrap md:table-cell">
                         WEEK
                       </TableHead>
                       <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
@@ -2270,10 +2276,10 @@ function AdminAssessmentView() {
                         key={`${student._id}-${index}`}
                         className="hover:bg-gray-50/50"
                       >
-                        <TableCell className="py-3 text-sm text-muted-foreground">
+                        <TableCell className="hidden py-3 text-sm text-muted-foreground md:table-cell">
                           {index + 1}
                         </TableCell>
-                        <TableCell className="py-3">
+                        <TableCell className="hidden py-3 md:table-cell">
                           <Avatar className="h-10 w-10">
                             <AvatarImage
                               src={
@@ -2289,15 +2295,15 @@ function AdminAssessmentView() {
                             </AvatarFallback>
                           </Avatar>
                         </TableCell>
-                        <TableCell className="py-3">
-                          <span className="text-sm font-medium">
+                        <TableCell className="min-w-0 py-3">
+                          <span className="block truncate text-sm font-medium">
                             {student.name}
                           </span>
                         </TableCell>
-                        <TableCell className="py-3 text-sm text-muted-foreground">
+                        <TableCell className="hidden py-3 text-sm text-muted-foreground md:table-cell">
                           {student.stack}
                         </TableCell>
-                        <TableCell className="py-3">
+                        <TableCell className="hidden py-3 md:table-cell">
                           {student.week && (
                             <div className="flex items-center gap-2">
                               <span className="text-sm">{student.week}</span>
@@ -2368,7 +2374,7 @@ function AdminAssessmentView() {
           {/* Filters */}
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2">
+              <div className="flex w-full items-center gap-2 sm:w-auto">
                 <Label
                   htmlFor="task-week-filter"
                   className="text-sm font-medium whitespace-nowrap"
@@ -2383,7 +2389,7 @@ function AdminAssessmentView() {
                       e.target.value === "all" ? "all" : Number(e.target.value),
                     )
                   }
-                  className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-auto"
                 >
                   <option value="all">All weeks</option>
                   {weekOptions.map((week) => (
@@ -2394,7 +2400,7 @@ function AdminAssessmentView() {
                 </select>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex w-full items-center gap-2 sm:w-auto">
                 <Label
                   htmlFor="task-stack-filter"
                   className="text-sm font-medium whitespace-nowrap"
@@ -2407,7 +2413,7 @@ function AdminAssessmentView() {
                   onChange={(e) =>
                     setTaskStack(e.target.value as "all" | AssignmentStack)
                   }
-                  className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-auto"
                 >
                   <option value="all">All stacks</option>
                   {assignmentStacks.map((stack) => (
@@ -2418,7 +2424,7 @@ function AdminAssessmentView() {
                 </select>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex w-full items-center gap-2 sm:w-auto">
                 <Label
                   htmlFor="task-due-filter"
                   className="text-sm font-medium whitespace-nowrap"
@@ -2429,7 +2435,7 @@ function AdminAssessmentView() {
                   id="task-due-filter"
                   value={taskDue}
                   onChange={(e) => setTaskDue(e.target.value as DueFilter)}
-                  className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-auto"
                 >
                   <option value="all">Any</option>
                   <option value="upcoming">Upcoming</option>
@@ -2449,7 +2455,7 @@ function AdminAssessmentView() {
                   placeholder="Search tasks"
                   value={taskSearch}
                   onChange={(e) => setTaskSearch(e.target.value)}
-                  className="pl-10 bg-white border-gray-200"
+                  className="pl-10 bg-background border-border"
                 />
               </div>
             </div>
@@ -2485,13 +2491,13 @@ function AdminAssessmentView() {
                         <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
                           TITLE
                         </TableHead>
-                        <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                        <TableHead className="hidden text-xs font-semibold text-foreground whitespace-nowrap md:table-cell">
                           STACK
                         </TableHead>
                         <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
                           DUE
                         </TableHead>
-                        <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                        <TableHead className="hidden text-xs font-semibold text-foreground whitespace-nowrap md:table-cell">
                           LATE?
                         </TableHead>
                         <TableHead className="w-[50px]"></TableHead>
@@ -2506,8 +2512,8 @@ function AdminAssessmentView() {
                           <TableCell className="py-3 text-sm text-muted-foreground whitespace-nowrap">
                             Week {assignment.week}
                           </TableCell>
-                          <TableCell className="py-3">
-                            <span className="text-sm font-medium">
+                          <TableCell className="min-w-0 py-3">
+                            <span className="block truncate text-sm font-medium">
                               {assignment.title}
                             </span>
                             <RichText
@@ -2517,7 +2523,7 @@ function AdminAssessmentView() {
                               className="text-xs max-w-md"
                             />
                           </TableCell>
-                          <TableCell className="py-3 text-sm text-muted-foreground whitespace-nowrap">
+                          <TableCell className="hidden py-3 text-sm text-muted-foreground whitespace-nowrap md:table-cell">
                             {assignment.stack}
                           </TableCell>
                           <TableCell className="py-3">
@@ -2535,7 +2541,7 @@ function AdminAssessmentView() {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="py-3 text-sm text-muted-foreground">
+                          <TableCell className="hidden py-3 text-sm text-muted-foreground md:table-cell">
                             {assignment.allowLateSubmissions ? "Allowed" : "—"}
                           </TableCell>
                           <TableCell className="py-3">
@@ -2595,7 +2601,7 @@ function AdminAssessmentView() {
           if (!open) setAssignmentToDelete(null);
         }}
       >
-        <DialogContent>
+        <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle>Delete this task?</DialogTitle>
             <DialogDescription>
@@ -2740,7 +2746,7 @@ function AdminAssessmentView() {
             </Avatar>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label
                 htmlFor="punctuality"
@@ -2845,18 +2851,18 @@ function AdminAssessmentView() {
             </div>
           </div>
 
-          <div className="flex justify-center gap-4 pt-4">
+          <div className="flex flex-col-reverse justify-center gap-2 pt-4 sm:flex-row">
             <Button
               variant="outline"
               onClick={() => setShowGradeDialog(false)}
-              className="w-32"
+              className="w-full sm:w-32"
             >
               Cancel
             </Button>
             <Button
               onClick={handleSaveGrade}
               disabled={isSavingGrade}
-              className="w-32 bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+              className="w-full bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] sm:w-32"
             >
               {isSavingGrade ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

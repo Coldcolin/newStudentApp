@@ -291,7 +291,7 @@ export default function StudentCheckInDetailPage({
         </div>
 
         {/* Student Info */}
-        <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+        <div className="flex items-center gap-4 p-4 bg-card rounded-lg">
           <Avatar className="h-14 w-14">
             <AvatarImage
               src={`/placeholder.svg?height=56&width=56&query=student%20${student.id}`}

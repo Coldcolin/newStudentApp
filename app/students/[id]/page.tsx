@@ -122,6 +122,13 @@ const gradingHistory = [
   },
 ];
 
+const getTotalColor = (total: number) =>
+  total >= 18
+    ? "text-[#34a853]"
+    : total >= 15
+      ? "text-[#ffb703]"
+      : "text-[#ec1c24]";
+
 const getStatusBadge = (status: string) => {
   switch (status) {
     case "active":
@@ -249,6 +256,9 @@ export default function StudentDetailPage({
     handleGetStudentInfo();
   }, [id]);
 
+  const ratings = student.allRatings ?? [];
+  const hasRatings = ratings.length > 0;
+
   return (
     <DashboardLayout title="Profile">
       <div className="space-y-6">
@@ -264,7 +274,7 @@ export default function StudentDetailPage({
 
         {/* Profile Header */}
         <Card className="border-none shadow-sm">
-          <CardContent className="p-6">
+          <CardContent className="p-4 md:p-6">
             <div className="flex flex-col items-center gap-6 md:flex-row md:items-start">
               <Avatar className="h-24 w-24 border-4 border-[#ffb703]">
                 <AvatarImage src={student.image} />
@@ -273,10 +283,10 @@ export default function StudentDetailPage({
                 </AvatarFallback>
               </Avatar>
 
-              <div className="flex-1 text-center md:text-left">
+              <div className="min-w-0 flex-1 text-center md:text-left">
                 <div className="flex flex-col items-center gap-2 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <h2 className="text-2xl font-bold text-foreground">
+                  <div className="min-w-0">
+                    <h2 className="text-xl font-bold break-words text-foreground md:text-2xl">
                       {student.name}
                     </h2>
                     <p className="text-muted-foreground">
@@ -284,7 +294,7 @@ export default function StudentDetailPage({
                     </p>
                     <div className="mt-2">{getStatusBadge("active")}</div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                     {/* <Button variant="outline" className="gap-2">
                       <Edit className="h-4 w-4" />
                       Edit Profile
@@ -316,13 +326,13 @@ export default function StudentDetailPage({
                   </div>
                 </div>
 
-                <div className="mt-4 flex flex-wrap justify-center gap-6 md:justify-start">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Mail className="h-4 w-4" />
-                    <span>{student.email}</span>
+                <div className="mt-4 flex flex-wrap justify-center gap-4 md:justify-start md:gap-6">
+                  <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                    <Mail className="h-4 w-4 shrink-0" />
+                    <span className="break-all">{student.email}</span>
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
-                    <Calendar className="h-4 w-4" />
+                    <Calendar className="h-4 w-4 shrink-0" />
                     <span>
                       Enrolled{" "}
                       {student.createdAt
@@ -331,7 +341,7 @@ export default function StudentDetailPage({
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
-                    <GraduationCap className="h-4 w-4" />
+                    <GraduationCap className="h-4 w-4 shrink-0" />
                     <span>Cohort {student.cohort}</span>
                   </div>
                 </div>
@@ -341,31 +351,35 @@ export default function StudentDetailPage({
         </Card>
 
         {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-3 gap-2 md:gap-4">
           <Card className="border-none shadow-sm">
-            <CardContent className="p-6">
+            <CardContent className="p-3 md:p-6">
               <div className="text-center">
-                <p className="text-3xl font-bold text-[#ffb703]">
+                <p className="text-xl font-bold text-[#ffb703] md:text-3xl">
                   {student.overallRating?.toFixed(1) || "N/A"}
                 </p>
-                <p className="text-sm text-muted-foreground">Overall Rating</p>
+                <p className="text-xs text-muted-foreground md:text-sm">
+                  Overall Rating
+                </p>
               </div>
             </CardContent>
           </Card>
           <Card className="border-none shadow-sm">
-            <CardContent className="p-6">
+            <CardContent className="p-3 md:p-6">
               <div className="text-center">
-                <p className="text-3xl font-bold text-foreground">
+                <p className="text-xl font-bold text-foreground md:text-3xl">
                   {student.allRatings?.length || 0}
                 </p>
-                <p className="text-sm text-muted-foreground">Weeks Assessed</p>
+                <p className="text-xs text-muted-foreground md:text-sm">
+                  Weeks Assessed
+                </p>
               </div>
             </CardContent>
           </Card>
           <Card className="border-none shadow-sm">
-            <CardContent className="p-6">
+            <CardContent className="p-3 md:p-6">
               <div className="text-center">
-                <p className="text-3xl font-bold text-[#34a853]">
+                <p className="text-xl font-bold text-[#34a853] md:text-3xl">
                   {student.weeklyRating?.toFixed(1) ||
                     (student.allRatings?.length > 0
                       ? student.allRatings[
@@ -373,15 +387,17 @@ export default function StudentDetailPage({
                         ]?.total?.toFixed(1)
                       : "N/A")}
                 </p>
-                <p className="text-sm text-muted-foreground">Weekly Rating</p>
+                <p className="text-xs text-muted-foreground md:text-sm">
+                  Weekly Rating
+                </p>
               </div>
             </CardContent>
           </Card>
         </div>
 
         {/* Grading History */}
-        <Card className="border-none shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between">
+        <Card className="border-none shadow-sm overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between px-4 md:px-6">
             <CardTitle>Grading History</CardTitle>
             {/* <Button 
               className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
@@ -390,79 +406,161 @@ export default function StudentDetailPage({
               Submit Grade
             </Button> */}
           </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Week</TableHead>
-                  <TableHead>Punctuality</TableHead>
-                  <TableHead>Assignments</TableHead>
-                  <TableHead>Defense</TableHead>
-                  <TableHead>Participation</TableHead>
-                  <TableHead>Assessment</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Date</TableHead>
-                  {isAdmin && <TableHead>Actions</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {student.allRatings?.map((item: any) => (
-                  <TableRow key={item._id ?? item.week}>
-                    <TableCell className="font-medium">
-                      Week {item.week}
-                    </TableCell>
-                    <TableCell>{item.punctuality}</TableCell>
-                    <TableCell>{item.Assignments}</TableCell>
-                    <TableCell>{item.personalDefense}</TableCell>
-                    <TableCell>{item.classParticipation}</TableCell>
-                    <TableCell>{item.classAssessment}</TableCell>
-                    <TableCell>
-                      <span
-                        className={`font-semibold ${
-                          item.total >= 18
-                            ? "text-[#34a853]"
-                            : item.total >= 15
-                              ? "text-[#ffb703]"
-                              : "text-[#ec1c24]"
-                        }`}
-                      >
-                        {item.total}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {item.createdAt
-                        ? new Date(item.createdAt).toLocaleDateString()
-                        : "N/A"}
-                    </TableCell>
-                    {isAdmin && (
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-[#ec1c24] hover:bg-[#ec1c24]/10 hover:text-[#ec1c24]"
-                          onClick={() => setRatingWeekToDelete(item.week)}
-                          disabled={
-                            isDeletingRating &&
-                            ratingWeekToDelete === item.week
-                          }
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                )) || (
-                  <TableRow>
-                    <TableCell
-                      colSpan={isAdmin ? 9 : 8}
-                      className="text-center text-muted-foreground"
+          <CardContent className="p-0">
+            {!hasRatings ? (
+              <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+                No ratings available
+              </p>
+            ) : (
+              <>
+                <div className="space-y-3 px-4 pb-4 md:hidden">
+                  {ratings.map((item: any) => (
+                    <div
+                      key={item._id ?? item.week}
+                      className="mx-auto w-full max-w-[310px] rounded-lg border border-border bg-muted/40 p-4"
                     >
-                      No ratings available
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-foreground">
+                            Week {item.week}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {item.createdAt
+                              ? new Date(item.createdAt).toLocaleDateString()
+                              : "N/A"}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <p
+                            className={`text-sm font-bold ${getTotalColor(item.total)}`}
+                          >
+                            {item.total}
+                          </p>
+                          {isAdmin && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-[#ec1c24] hover:bg-[#ec1c24]/10 hover:text-[#ec1c24]"
+                              onClick={() => setRatingWeekToDelete(item.week)}
+                              disabled={
+                                isDeletingRating &&
+                                ratingWeekToDelete === item.week
+                              }
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <div className="rounded-md bg-background/70 px-3 py-2">
+                          <p className="text-xs text-muted-foreground">
+                            Punctuality
+                          </p>
+                          <p className="text-sm font-medium">
+                            {item.punctuality}
+                          </p>
+                        </div>
+                        <div className="rounded-md bg-background/70 px-3 py-2">
+                          <p className="text-xs text-muted-foreground">
+                            Assignments
+                          </p>
+                          <p className="text-sm font-medium">
+                            {item.Assignments}
+                          </p>
+                        </div>
+                        <div className="rounded-md bg-background/70 px-3 py-2">
+                          <p className="text-xs text-muted-foreground">
+                            Defense
+                          </p>
+                          <p className="text-sm font-medium">
+                            {item.personalDefense}
+                          </p>
+                        </div>
+                        <div className="rounded-md bg-background/70 px-3 py-2">
+                          <p className="text-xs text-muted-foreground">
+                            Participation
+                          </p>
+                          <p className="text-sm font-medium">
+                            {item.classParticipation}
+                          </p>
+                        </div>
+                        <div className="rounded-md bg-background/70 px-3 py-2">
+                          <p className="text-xs text-muted-foreground">
+                            Assessment
+                          </p>
+                          <p className="text-sm font-medium">
+                            {item.classAssessment}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="hidden overflow-x-auto px-2 md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Week</TableHead>
+                        <TableHead>Punctuality</TableHead>
+                        <TableHead>Assignments</TableHead>
+                        <TableHead>Defense</TableHead>
+                        <TableHead>Participation</TableHead>
+                        <TableHead>Assessment</TableHead>
+                        <TableHead>Total</TableHead>
+                        <TableHead>Date</TableHead>
+                        {isAdmin && <TableHead>Actions</TableHead>}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {ratings.map((item: any) => (
+                        <TableRow key={item._id ?? item.week}>
+                          <TableCell className="font-medium">
+                            Week {item.week}
+                          </TableCell>
+                          <TableCell>{item.punctuality}</TableCell>
+                          <TableCell>{item.Assignments}</TableCell>
+                          <TableCell>{item.personalDefense}</TableCell>
+                          <TableCell>{item.classParticipation}</TableCell>
+                          <TableCell>{item.classAssessment}</TableCell>
+                          <TableCell>
+                            <span
+                              className={`font-semibold ${getTotalColor(item.total)}`}
+                            >
+                              {item.total}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {item.createdAt
+                              ? new Date(item.createdAt).toLocaleDateString()
+                              : "N/A"}
+                          </TableCell>
+                          {isAdmin && (
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-[#ec1c24] hover:bg-[#ec1c24]/10 hover:text-[#ec1c24]"
+                                onClick={() =>
+                                  setRatingWeekToDelete(item.week)
+                                }
+                                disabled={
+                                  isDeletingRating &&
+                                  ratingWeekToDelete === item.week
+                                }
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
