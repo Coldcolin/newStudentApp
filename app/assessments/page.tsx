@@ -77,6 +77,8 @@ import {
   GradingSubmission,
   StudentSubmission,
   PerformanceReviewRating,
+  WeeklyAssignmentScore,
+  getStudentAssignmentScores,
   getAssignmentsByWeek,
   getAllAssignmentsByWeek,
   getAllAssignments,
@@ -91,6 +93,12 @@ import {
   getStudentPerformanceReview,
   uploadRatingsExcel,
 } from "@/lib/api/assignments";
+import {
+  SOTW_STACK_LABELS,
+  SotwStack,
+  selectStudentOfTheWeek,
+  selectStudentsOfTheMonth,
+} from "@/lib/api/sotw";
 
 // Types
 interface StudentRecord {
@@ -186,6 +194,28 @@ const normalizeStackForApi = (
 // Format an individual breakdown category value as "x/20"
 const formatBreakdownValue = (value: number | null | undefined): string =>
   typeof value === "number" ? `${value}/20` : "-";
+
+// Assignment scores stay on their native 0-20 scale rather than being converted
+// to a percentage like the rest of this page, because 20 is the scale a tutor
+// enters the "Assignments" rating category on. Whole numbers print bare so a
+// clean 18 does not read as "18.0".
+const formatScore20 = (value: number | null | undefined): string => {
+  if (typeof value !== "number") return "-";
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+};
+
+const assignmentScoreStatusClass = (
+  status: "Graded" | "Pending" | "Not Submitted",
+) => {
+  switch (status) {
+    case "Graded":
+      return "bg-[#34a853]/10 text-[#34a853]";
+    case "Pending":
+      return "bg-[#ffb703]/10 text-[#ffb703]";
+    default:
+      return "bg-gray-100 text-gray-600";
+  }
+};
 
 // Compute the percentage total for a rating. Prefers the API-provided total,
 // otherwise sums the five category fields (each scored 0-20, total 0-100).
@@ -552,6 +582,13 @@ function StudentAssessmentView({
     useState<PerformanceReviewRating | null>(null);
   const [isLoadingReview, setIsLoadingReview] = useState(false);
 
+  // Weekly assignment scores (Review tab). Every week is fetched in one go so
+  // switching the week selector is instant.
+  const [assignmentScores, setAssignmentScores] = useState<
+    WeeklyAssignmentScore[]
+  >([]);
+  const [isLoadingScores, setIsLoadingScores] = useState(false);
+
   // Fetch assignments and submissions
   useEffect(() => {
     // Wait for the program settings to resolve the default week, so the first
@@ -701,6 +738,45 @@ function StudentAssessmentView({
       cancelled = true;
     };
   }, [activeTab, isAdminViewing, studentId, user?.id]);
+
+  // Fetch every week's assignment scores when the Review tab is opened.
+  // selectedWeek is deliberately not a dependency — the week is picked out of
+  // this result client-side, so changing it costs no request.
+  useEffect(() => {
+    if (activeTab !== "review") return;
+
+    const targetStudentId = isAdminViewing ? studentId : user?.id;
+    if (!targetStudentId) return;
+
+    let cancelled = false;
+    const fetchScores = async () => {
+      setIsLoadingScores(true);
+      try {
+        const data = await getStudentAssignmentScores(targetStudentId);
+        if (cancelled) return;
+        setAssignmentScores(data.weeks ?? []);
+      } catch (error) {
+        if (!cancelled) {
+          const apiError = error as ApiError;
+          console.error("Failed to fetch assignment scores:", error);
+          toast.error(apiError.message || "Failed to load assignment scores");
+          setAssignmentScores([]);
+        }
+      } finally {
+        if (!cancelled) setIsLoadingScores(false);
+      }
+    };
+
+    fetchScores();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, isAdminViewing, studentId, user?.id]);
+
+  const selectedWeekScore = useMemo(
+    () => assignmentScores.find((entry) => entry.week === selectedWeek) ?? null,
+    [assignmentScores, selectedWeek],
+  );
 
   // Convert API assignments to Task format
   const tasks: Task[] = assignments.map((assignment) => {
@@ -1111,7 +1187,131 @@ function StudentAssessmentView({
         </TabsContent>
 
         {/* Review Tab */}
-        <TabsContent value="review" className="mt-6">
+        <TabsContent value="review" className="mt-6 space-y-6">
+          {/* Assignment Scores */}
+          <Card className="border-none shadow-sm">
+            <CardHeader>
+              <CardTitle>Assignment Scores</CardTitle>
+              <CardDescription>
+                Every task issued for the week counts towards this score, so
+                anything not handed in or not yet graded counts as 0.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoadingScores ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-[#ffb703]" />
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Selected week summary */}
+                  <div className="rounded-lg border border-border p-4">
+                    {!selectedWeekScore ||
+                    selectedWeekScore.totalAssignments === 0 ? (
+                      <div className="text-center py-6 text-muted-foreground">
+                        <p className="font-medium text-foreground">
+                          Week {selectedWeek}
+                        </p>
+                        <p className="text-sm mt-1">
+                          No tasks were issued this week.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <div>
+                            <p className="text-sm text-muted-foreground">
+                              Week {selectedWeekScore.week} cumulative
+                            </p>
+                            <p className="text-2xl font-bold text-[#34a853]">
+                              {formatScore20(selectedWeekScore.cumulativeScore)}{" "}
+                              <span className="text-base font-medium text-muted-foreground">
+                                / {selectedWeekScore.maxScore}
+                              </span>
+                            </p>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {selectedWeekScore.gradedCount} of{" "}
+                            {selectedWeekScore.totalAssignments} graded
+                          </p>
+                        </div>
+
+                        <div className="mt-4 space-y-2 border-t border-border pt-4">
+                          {selectedWeekScore.assignments.map((item) => (
+                            <div
+                              key={item.assignmentId}
+                              className="flex flex-wrap items-center justify-between gap-2"
+                            >
+                              <span className="min-w-0 flex-1 truncate text-sm">
+                                {item.title}
+                              </span>
+                              <div className="flex items-center gap-3">
+                                <span className="text-sm font-semibold">
+                                  {item.grade ?? 0}/{selectedWeekScore.maxScore}
+                                </span>
+                                <Badge
+                                  className={assignmentScoreStatusClass(
+                                    item.status,
+                                  )}
+                                >
+                                  {item.status}
+                                </Badge>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* All weeks */}
+                  {assignmentScores.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold mb-3">All weeks</h4>
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-[#ffb703]/10 hover:bg-[#ffb703]/10">
+                              <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                                WEEK
+                              </TableHead>
+                              <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                                SCORE
+                              </TableHead>
+                              <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                                COMPLETED
+                              </TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {assignmentScores.map((entry) => (
+                              <TableRow
+                                key={entry.week}
+                                className="hover:bg-gray-50/50"
+                              >
+                                <TableCell className="py-3 text-sm font-medium whitespace-nowrap">
+                                  Week {entry.week}
+                                </TableCell>
+                                <TableCell className="py-3 text-sm font-semibold text-[#34a853] whitespace-nowrap">
+                                  {formatScore20(entry.cumulativeScore)}/
+                                  {entry.maxScore}
+                                </TableCell>
+                                <TableCell className="py-3 text-sm text-muted-foreground whitespace-nowrap">
+                                  {entry.gradedCount} of{" "}
+                                  {entry.totalAssignments}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="border-none shadow-sm">
             <CardHeader>
               <CardTitle>Performance Review</CardTitle>
@@ -1656,6 +1856,14 @@ function AdminAssessmentView() {
     useState<Assignment | null>(null);
   const [isDeletingAssignment, setIsDeletingAssignment] = useState(false);
 
+  // Student of the week / month selection. null until the program settings
+  // resolve the default week, like taskWeek below.
+  const [sotwWeek, setSotwWeek] = useState<number | null>(null);
+  const [pendingSotw, setPendingSotw] = useState<SotwStack | "month" | null>(
+    null,
+  );
+  const [showSotmConfirm, setShowSotmConfirm] = useState(false);
+
   // Per-assignment submissions dialog
   const [submissionsAssignment, setSubmissionsAssignment] =
     useState<Assignment | null>(null);
@@ -1707,11 +1915,58 @@ function AdminAssessmentView() {
   useEffect(() => {
     if (!isLoaded) return;
     setTaskWeek((week) => week ?? currentWeek);
+    setSotwWeek((week) => week ?? currentWeek);
     setGradeData((prev) =>
       prev.week ? prev : { ...prev, week: String(currentWeek) },
     );
   }, [isLoaded, currentWeek]);
   const [isUploadingTask, setIsUploadingTask] = useState(false);
+
+  const handleSelectSotw = async (stack: SotwStack) => {
+    if (sotwWeek === null) return;
+    setPendingSotw(stack);
+    try {
+      await selectStudentOfTheWeek(stack, sotwWeek);
+      toast.success(
+        `${SOTW_STACK_LABELS[stack]} student of the week selected for week ${sotwWeek}`,
+      );
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error("Failed to select student of the week:", error);
+      toast.error(
+        apiError.message ||
+          `Failed to select the ${SOTW_STACK_LABELS[stack]} student of the week`,
+      );
+    } finally {
+      setPendingSotw(null);
+    }
+  };
+
+  const handleSelectSotm = async () => {
+    if (sotwWeek === null) return;
+    setShowSotmConfirm(false);
+    setPendingSotw("month");
+    try {
+      const result = await selectStudentsOfTheMonth(sotwWeek);
+      const winners = [result.front, result.back, result.product]
+        .filter(Boolean)
+        .map((winner) => winner!.name)
+        .join(", ");
+      toast.success(
+        winners
+          ? `Students of the month selected: ${winners}`
+          : "Students of the month selected",
+      );
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error("Failed to select students of the month:", error);
+      toast.error(
+        apiError.message || "Failed to select the students of the month",
+      );
+    } finally {
+      setPendingSotw(null);
+    }
+  };
 
   const resetBulkUploadState = useCallback(() => {
     setSelectedExcelFile(null);
@@ -2235,6 +2490,111 @@ function AdminAssessmentView() {
           </div>
         )}
       </div>
+
+      {/* Student of the Week selection */}
+      {adminSection === "students" && (
+        <Card className="border-none shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg">Student of the Week</CardTitle>
+            <CardDescription>
+              Picks the top-rated student in a stack for the selected week. This
+              runs off the weekly ratings, so those must already be entered for
+              the week, and a stack that already has a winner cannot be picked
+              again.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              <Label
+                htmlFor="sotw-week-select"
+                className="text-sm font-medium whitespace-nowrap"
+              >
+                Week:
+              </Label>
+              <select
+                id="sotw-week-select"
+                value={sotwWeek ?? currentWeek}
+                onChange={(e) => setSotwWeek(Number(e.target.value))}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-auto"
+              >
+                {weekOptions.map((week) => (
+                  <option key={week} value={week}>
+                    Week {week}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {(["front", "back", "product"] as SotwStack[]).map((stack) => (
+                <Button
+                  key={stack}
+                  onClick={() => handleSelectSotw(stack)}
+                  disabled={pendingSotw !== null || sotwWeek === null}
+                  className="w-full bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] rounded-full px-6 py-2.5 font-medium flex items-center justify-center gap-2 shadow-md transition-all hover:shadow-lg sm:w-auto"
+                >
+                  {pendingSotw === stack && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+                  Select {SOTW_STACK_LABELS[stack]} SOTW
+                </Button>
+              ))}
+            </div>
+
+            <div className="border-t border-border pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowSotmConfirm(true)}
+                disabled={pendingSotw !== null || sotwWeek === null}
+                className="w-full rounded-full px-6 py-2.5 font-medium flex items-center justify-center gap-2 sm:w-auto"
+              >
+                {pendingSotw === "month" && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                Students of the Month
+              </Button>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Ranks each stack on its students&apos; last four weekly ratings.
+                The winners are saved over week {sotwWeek ?? currentWeek}&apos;s
+                Student of the Week records, so this replaces what the dashboard
+                shows for that week.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Confirm the students-of-the-month run, which overwrites the week's SOTW */}
+      <Dialog open={showSotmConfirm} onOpenChange={setShowSotmConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Select students of the month?</DialogTitle>
+            <DialogDescription>
+              This ranks each stack on its students&apos; last four weekly
+              ratings and saves the winners into week{" "}
+              {sotwWeek ?? currentWeek}&apos;s Student of the Week records. The
+              dashboard will show these students as that week&apos;s Students of
+              the Week.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowSotmConfirm(false)}
+              disabled={pendingSotw !== null}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSelectSotm}
+              disabled={pendingSotw !== null}
+              className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+            >
+              Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Students Table */}
       {adminSection === "students" && (

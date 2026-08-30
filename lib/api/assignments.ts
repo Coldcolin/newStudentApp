@@ -416,3 +416,63 @@ export async function getStudentPerformanceReview(
   );
   return response.data;
 }
+
+/** One assignment issued to the student in a given week, with its grade if any. */
+export interface AssignmentScoreItem {
+  assignmentId: string;
+  title: string;
+  stack: AssignmentStack;
+  dueDateTime: string;
+  formattedDueDate?: string;
+  submissionId: string | null;
+  submissionLink: string | null;
+  submittedAt: string | null;
+  isLate: boolean;
+  /** The recorded grade out of 20, or null when not submitted / not yet graded. */
+  grade: number | null;
+  status: "Graded" | "Pending" | "Not Submitted";
+}
+
+/**
+ * A week's assignment performance. `cumulativeScore` is the week's grades
+ * normalized to a single score out of 20, counting anything not graded as 0 —
+ * it is null only when no assignments were issued that week.
+ */
+export interface WeeklyAssignmentScore {
+  week: number;
+  maxScore: number;
+  totalAssignments: number;
+  submittedCount: number;
+  gradedCount: number;
+  pointsEarned: number;
+  pointsPossible: number;
+  cumulativeScore: number | null;
+  assignments: AssignmentScoreItem[];
+}
+
+export interface StudentAssignmentScoresResponse {
+  student?: {
+    _id: string;
+    name: string;
+    image?: string;
+    stack: string;
+  };
+  maxScore: number;
+  weeks: WeeklyAssignmentScore[];
+}
+
+/**
+ * Get a student's cumulative assignment score out of 20, broken down by week.
+ * Omit `week` to get every week at once.
+ * Endpoint: GET /students/:id/assignment-scores
+ */
+export async function getStudentAssignmentScores(
+  studentId: string,
+  week?: number,
+): Promise<StudentAssignmentScoresResponse> {
+  const response = await axiosInstance.get(
+    `/api/students/${studentId}/assignment-scores`,
+    { params: week ? { week } : undefined },
+  );
+  return response.data;
+}
