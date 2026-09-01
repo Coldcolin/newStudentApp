@@ -45,3 +45,7 @@ export async function updateProgramSettings(
   const response = await axiosInstance.patch(`/api/settings/program`, data);
   return response.data;
 }
+
+/** The week numbers a picker can offer, given the cohort's configured length. */
+export const buildWeekOptions = (totalWeeks: number) =>
+  Array.from({ length: totalWeeks }, (_, i) => i + 1);

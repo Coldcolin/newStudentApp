@@ -194,7 +194,8 @@ export async function createAssignment(
 }
 
 /**
- * Get assignments by week (Student only - requires auth, stack from token)
+ * Get a week's assignments for the given stack, plus anything issued to
+ * "General" (Student view - requires auth)
  */
 export async function getAssignmentsByWeek(
   week: number,
@@ -210,7 +211,8 @@ export async function getAssignmentsByWeek(
 }
 
 /**
- * Get all assignments by week and stack (Tutor/Admin access)
+ * Get a week's assignments for a named stack, plus anything issued to
+ * "General" (Tutor/Admin viewing a student's board)
  */
 export async function getAllAssignmentsByWeek(
   week: number,
@@ -476,3 +478,43 @@ export async function getStudentAssignmentScores(
   );
   return response.data;
 }
+
+/** The winner of a single task, or the task alone when nothing is graded yet. */
+export interface TopPerformer {
+  assignmentId: string;
+  title: string;
+  stack: AssignmentStack;
+  /** Null when no submission for this task has been graded yet. */
+  student: { _id: string; name: string; image?: string; stack: string } | null;
+  /** The winning grade out of 20, or null when nothing is graded. */
+  grade: number | null;
+  submittedAt: string | null;
+  /** How many students share the winning grade — 1 for an outright win. */
+  tiedCount: number;
+}
+
+export interface WeeklyTopPerformersResponse {
+  week: number;
+  maxScore: number;
+  topPerformers: TopPerformer[];
+}
+
+/**
+ * Get the highest scorer for each of a week's tasks. Every task issued that week
+ * comes back, with a null `student` where nothing has been graded yet.
+ * Endpoint: GET /api/assignments/week/:week/top-performers
+ */
+export async function getTopPerformersByWeek(
+  week: number,
+  stack?: string,
+): Promise<WeeklyTopPerformersResponse> {
+  const response = await axiosInstance.get(
+    `/api/assignments/week/${week}/top-performers`,
+    { params: stack ? { stack } : undefined },
+  );
+  return response.data;
+}
+
+/** The API stores grades out of 20, the UI shows them out of 100. */
+export const toDisplayScore = (grade: number | null) =>
+  grade === null || grade === undefined ? null : grade * 5;

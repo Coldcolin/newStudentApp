@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Trophy, Medal, Award, TrendingUp, Users, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -15,7 +17,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useCurrentUser } from "@/lib/store/hooks";
-import axiosInstance from "@/lib/api/axios";
+import axiosInstance, { type ApiError } from "@/lib/api/axios";
+import {
+  type TopPerformer,
+  getTopPerformersByWeek,
+  toDisplayScore,
+} from "@/lib/api/assignments";
+import { buildWeekOptions } from "@/lib/api/settings";
+import { useProgramSettings } from "@/components/providers/program-settings-provider";
 
 interface ApiRankingItem {
   studentName: string;
@@ -28,15 +37,8 @@ interface ApiRankingItem {
   classAssessment: number;
 }
 
-interface TopScorerItem {
-  title: string;
-  name: string;
-  totalScore: number;
-}
-
 interface RankingsResponse {
   rankings: ApiRankingItem[];
-  topAssignmentScorers: TopScorerItem[];
 }
 
 interface RankingRow {
@@ -83,10 +85,22 @@ const tabs = ["All", "Front-End", "Back-End", "Product Design"];
 
 export default function RankingsPage() {
   const user = useCurrentUser();
+  const { currentWeek, totalWeeks, isLoaded } = useProgramSettings();
   const [activeTab, setActiveTab] = useState("All");
   const [rankingsData, setRankingsData] = useState<RankingRow[]>([]);
-  const [topScorers, setTopScorers] = useState<TopScorerItem[]>([]);
+  const [topPerformers, setTopPerformers] = useState<TopPerformer[]>([]);
+  const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingTopPerformers, setIsLoadingTopPerformers] = useState(false);
+
+  const weekOptions = useMemo(() => buildWeekOptions(totalWeeks), [totalWeeks]);
+
+  // Seed the week only once settings have settled — seeding earlier latches onto
+  // the placeholder week 1 and never moves to the configured week.
+  useEffect(() => {
+    if (!isLoaded) return;
+    setSelectedWeek((week) => week ?? currentWeek);
+  }, [isLoaded, currentWeek]);
 
   useEffect(() => {
     const fetchRankings = async () => {
@@ -109,15 +123,36 @@ export default function RankingsPage() {
             classAssessment: item.classAssessment,
           }))
         );
-        setTopScorers(response.data.topAssignmentScorers || []);
       } catch (error) {
+        const apiError = error as ApiError;
         console.error("Failed to fetch rankings:", error);
+        toast.error(apiError.message || "Failed to load rankings");
       } finally {
         setIsLoading(false);
       }
     };
     fetchRankings();
   }, [activeTab]);
+
+  useEffect(() => {
+    if (selectedWeek === null) return;
+    const fetchTopPerformers = async () => {
+      setIsLoadingTopPerformers(true);
+      try {
+        const stack = activeTab === "All" ? undefined : normalizeStack(activeTab);
+        const data = await getTopPerformersByWeek(selectedWeek, stack);
+        setTopPerformers(data.topPerformers || []);
+      } catch (error) {
+        const apiError = error as ApiError;
+        console.error("Failed to fetch top performers:", error);
+        toast.error(apiError.message || "Failed to load top performers");
+        setTopPerformers([]);
+      } finally {
+        setIsLoadingTopPerformers(false);
+      }
+    };
+    fetchTopPerformers();
+  }, [selectedWeek, activeTab]);
 
   const filteredRankings = rankingsData;
 
@@ -187,20 +222,44 @@ export default function RankingsPage() {
         </div> */}
 
         {/* Filters */}
-        <div className="-mx-4 flex flex-nowrap gap-3 overflow-x-auto px-4 md:mx-0 md:flex-wrap md:overflow-visible md:px-0">
-          {tabs.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`shrink-0 rounded-full px-6 py-2.5 text-sm font-medium transition-all border ${
-                activeTab === tab
-                  ? "bg-[#ffb703] text-[#08022b] border-[#ffb703]"
-                  : "bg-card text-foreground border-border hover:bg-muted"
-              }`}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="-mx-4 flex flex-nowrap gap-3 overflow-x-auto px-4 md:mx-0 md:flex-wrap md:overflow-visible md:px-0">
+            {tabs.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`shrink-0 rounded-full px-6 py-2.5 text-sm font-medium transition-all border ${
+                  activeTab === tab
+                    ? "bg-[#ffb703] text-[#08022b] border-[#ffb703]"
+                    : "bg-card text-foreground border-border hover:bg-muted"
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+
+          {/* Week Selector — scopes the Top Performers card below */}
+          <div className="flex w-full items-center gap-2 lg:w-auto">
+            <Label
+              htmlFor="week-select"
+              className="text-sm font-medium whitespace-nowrap"
             >
-              {tab}
-            </button>
-          ))}
+              Week:
+            </Label>
+            <select
+              id="week-select"
+              value={selectedWeek ?? currentWeek}
+              onChange={(e) => setSelectedWeek(Number(e.target.value))}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 lg:w-auto"
+            >
+              {weekOptions.map((week) => (
+                <option key={week} value={week}>
+                  Week {week}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Full Rankings Table */}
@@ -389,30 +448,73 @@ export default function RankingsPage() {
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
               <Users className="h-5 w-5 text-[#ffb703]" />
               Top Performers by Task
+              {selectedWeek !== null && (
+                <span className="font-normal text-muted-foreground">
+                  — Week {selectedWeek}
+                </span>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {topScorers.map((scorer, index) => (
-                <div
-                  key={index}
-                  className="p-4 rounded-lg border border-border bg-muted/40 hover:bg-muted transition-colors"
-                >
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide">
-                    {scorer.title}
-                  </p>
-                  <p className="mt-1 font-semibold text-foreground">
-                    {scorer.name}
-                  </p>
-                  <div className="mt-2 flex items-center gap-1">
-                    <Trophy className="h-4 w-4 text-[#ffb703]" />
-                    <span className="text-sm font-bold text-[#34a853]">
-                      {scorer.totalScore}%
-                    </span>
+            {isLoadingTopPerformers ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-[#ffb703]" />
+              </div>
+            ) : topPerformers.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No tasks for this week
+              </p>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                {topPerformers.map((performer) => (
+                  <div
+                    key={performer.assignmentId}
+                    className="p-4 rounded-lg border border-border bg-muted/40 hover:bg-muted transition-colors"
+                  >
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                      {performer.title}
+                    </p>
+                    {performer.student ? (
+                      <>
+                        <div className="mt-2 flex items-center gap-2">
+                          <Avatar className="h-8 w-8 shrink-0">
+                            <AvatarImage
+                              src={performer.student.image || "/placeholder.svg"}
+                              alt={performer.student.name}
+                            />
+                            <AvatarFallback className="bg-[#ffb703] text-xs text-[#08022b]">
+                              {performer.student.name
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")}
+                            </AvatarFallback>
+                          </Avatar>
+                          <p className="min-w-0 truncate font-semibold text-foreground">
+                            {performer.student.name}
+                          </p>
+                        </div>
+                        <div className="mt-2 flex items-center gap-1">
+                          <Trophy className="h-4 w-4 text-[#ffb703]" />
+                          <span className="text-sm font-bold text-[#34a853]">
+                            {toDisplayScore(performer.grade)}%
+                          </span>
+                          {performer.tiedCount > 1 && (
+                            <span className="ml-1 text-xs text-muted-foreground">
+                              tied with {performer.tiedCount - 1} other
+                              {performer.tiedCount > 2 ? "s" : ""}
+                            </span>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="mt-3 text-sm text-muted-foreground">
+                        Not yet graded
+                      </p>
+                    )}
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

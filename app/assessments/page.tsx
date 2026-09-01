@@ -92,7 +92,9 @@ import {
   addStudentRating,
   getStudentPerformanceReview,
   uploadRatingsExcel,
+  toDisplayScore,
 } from "@/lib/api/assignments";
+import { buildWeekOptions } from "@/lib/api/settings";
 import {
   SOTW_STACK_LABELS,
   SotwStack,
@@ -280,17 +282,10 @@ const assignmentStacks: AssignmentStack[] = [
   "General",
 ];
 
-const buildWeekOptions = (totalWeeks: number) =>
-  Array.from({ length: totalWeeks }, (_, i) => i + 1);
-
 type DueFilter = "all" | "upcoming" | "overdue";
 
 const isOverdue = (assignment: Assignment) =>
   new Date(assignment.dueDateTime).getTime() < Date.now();
-
-// The API stores grades out of 20, the UI shows them out of 100
-const toDisplayScore = (grade: number | null) =>
-  grade === null || grade === undefined ? null : grade * 5;
 
 const formatSubmittedAt = (value: string) => {
   const date = new Date(value);
@@ -968,11 +963,11 @@ function StudentAssessmentView({
       case "in-progress":
         return "bg-[#ffb703]/10 text-[#ffb703]";
       case "pending":
-        return "bg-gray-100 text-gray-600";
+        return "bg-background text-muted-foreground";
       case "late":
         return "bg-[#ec1c24]/10 text-[#ec1c24]";
       default:
-        return "bg-gray-100 text-gray-600";
+        return "bg-background text-muted-foreground";
     }
   };
 
@@ -1123,6 +1118,20 @@ function StudentAssessmentView({
                             {task.status.charAt(0).toUpperCase() +
                               task.status.slice(1).replace("-", " ")}
                           </Badge>
+                          {/* The week's list mixes the stack's own tasks with
+                              General ones, so each card says which it is. */}
+                          {task.assignment?.stack && (
+                            <Badge
+                              variant="outline"
+                              className={
+                                task.assignment.stack === "General"
+                                  ? "border-[#219ebc]/40 text-[#219ebc]"
+                                  : "border-border text-muted-foreground"
+                              }
+                            >
+                              {task.assignment.stack}
+                            </Badge>
+                          )}
                         </div>
                         <div className="mt-1">
                           <RichText
@@ -1698,36 +1707,35 @@ function StudentAssessmentView({
         open={isTaskSubmitModalOpen}
         onOpenChange={setIsTaskSubmitModalOpen}
       >
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[90dvh] w-[calc(100%-1.5rem)] max-w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[640px]">
+          <DialogHeader className="shrink-0 px-4 pt-5 pr-10 pb-3 sm:px-6 sm:pr-12">
             <DialogTitle className="text-xl">Submit Task</DialogTitle>
             <DialogDescription>
               Review task details and submit your completed work
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5 py-4">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3 sm:px-6">
             {/* Task Info */}
-            <div className="p-4 bg-gray-50 rounded-lg space-y-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h4 className="font-semibold text-foreground">
+            <div className="space-y-3 rounded-lg bg-muted p-4">
+              <div className="flex items-start gap-2">
+                <h4 className="min-w-0 flex-1 break-words font-semibold text-foreground">
                   {selectedTask?.title}
                 </h4>
                 <Badge
-                  className={
+                  className={`shrink-0 ${
                     selectedTask ? getStatusColor(selectedTask.status) : ""
-                  }
+                  }`}
                 >
                   {selectedTask?.status.charAt(0).toUpperCase() +
                     (selectedTask?.status.slice(1).replace("-", " ") || "")}
                 </Badge>
               </div>
-              <div className="max-h-[240px] overflow-y-auto pr-1">
-                <RichText
-                  content={selectedTask?.description}
-                  format={selectedTask?.descriptionFormat}
-                />
-              </div>
+              <RichText
+                content={selectedTask?.description}
+                format={selectedTask?.descriptionFormat}
+                className="text-foreground"
+              />
               <div className="flex items-center gap-2 text-sm">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 <span className="text-muted-foreground">
@@ -1750,7 +1758,7 @@ function StudentAssessmentView({
                 placeholder="https://github.com/yourusername/your-repo or https://..."
                 value={submissionLink}
                 onChange={(e) => setSubmissionLink(e.target.value)}
-                className="h-12"
+                className="h-12 focus-visible:ring-1 focus-visible:ring-[#ffb703]/40"
               />
               <p className="text-xs text-muted-foreground">
                 Paste the link to your completed task (GitHub, CodePen, hosted
@@ -1759,18 +1767,19 @@ function StudentAssessmentView({
             </div>
           </div>
 
-          <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <DialogFooter className="shrink-0 flex-col-reverse gap-2 border-t px-4 py-3 sm:flex-row sm:justify-end sm:px-6">
             <Button
               variant="outline"
               onClick={handleCloseTaskModal}
               disabled={isSubmitting}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
             <Button
               onClick={handleTaskSubmit}
               disabled={isSubmitting}
-              className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+              className="w-full bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] sm:w-auto"
             >
               {isSubmitting ? (
                 <>
