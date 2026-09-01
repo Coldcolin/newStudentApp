@@ -119,6 +119,138 @@ interface StudentsApiResponse {
 
 const tabs = ["Front-End", "Back-End", "Product Design"];
 
+/**
+ * Resolves once the video has actually presented a decoded frame.
+ *
+ * `videoWidth`/`videoHeight` are populated at readyState 1 (HAVE_METADATA), but
+ * `drawImage` paints nothing until readyState 2 (HAVE_CURRENT_DATA). Capturing in
+ * that window produces a correctly sized but entirely black JPEG, which is valid
+ * enough that the upload and the server-side watermark both succeed silently.
+ */
+function waitForVideoFrame(
+  video: HTMLVideoElement,
+  timeoutMs = 5000,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const cleanups: Array<() => void> = [];
+    let settled = false;
+
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanups.forEach((fn) => fn());
+      if (error) reject(error);
+      else resolve();
+    };
+
+    const timer = window.setTimeout(
+      () => finish(new Error("Camera timed out while starting up")),
+      timeoutMs,
+    );
+    cleanups.push(() => window.clearTimeout(timer));
+
+    const track = (video.srcObject as MediaStream | null)?.getVideoTracks()[0];
+    if (track?.readyState === "ended") {
+      finish(new Error("Camera track ended"));
+      return;
+    }
+
+    const waitForFrame = () => {
+      // A muted track delivers no frames at all — backgrounded tab, screen lock,
+      // or another app holding the camera. Wait for it to resume.
+      if (track?.muted) {
+        const onUnmute = () => {
+          track.removeEventListener("unmute", onUnmute);
+          waitForFrame();
+        };
+        track.addEventListener("unmute", onUnmute);
+        cleanups.push(() => track.removeEventListener("unmute", onUnmute));
+        return;
+      }
+
+      // Fires only once a frame has been presented — the strongest signal we
+      // have. Unsupported in Firefox, hence the runtime check.
+      if (typeof video.requestVideoFrameCallback === "function") {
+        video.requestVideoFrameCallback(() => finish());
+        return;
+      }
+
+      // Firefox fallback: readyState >= HAVE_CURRENT_DATA plus a paint tick.
+      const check = () => {
+        if (video.readyState >= 2 && video.videoWidth > 0) {
+          requestAnimationFrame(() => finish());
+        }
+      };
+      video.addEventListener("loadeddata", check);
+      video.addEventListener("canplay", check);
+      cleanups.push(() => {
+        video.removeEventListener("loadeddata", check);
+        video.removeEventListener("canplay", check);
+      });
+      check();
+    };
+
+    waitForFrame();
+  });
+}
+
+// Reused across captures rather than allocating a canvas per check.
+let blankProbeCanvas: HTMLCanvasElement | null = null;
+
+/**
+ * True when the canvas holds a uniformly black image, meaning `drawImage` painted
+ * nothing. Both conditions matter: a real sensor frame always carries noise, so
+ * near-zero deviation is the reliable "nothing was drawn" signal, while the mean
+ * keeps a genuinely dim-but-real photo in a dark room from being rejected.
+ *
+ * The deviation bound is deliberately tiny because downscaling to 32x32 averages
+ * ~300 pixels per cell and so crushes sensor noise: measured against real frames,
+ * an unpainted canvas is exactly 0, while even a pitch-dark noise-only frame still
+ * reaches ~0.5 and a dim selfie ~9.
+ */
+function isBlankFrame(source: HTMLCanvasElement): boolean {
+  const SIZE = 32;
+  const MAX_MEAN = 8;
+  const MAX_STDEV = 0.25;
+
+  if (!blankProbeCanvas) {
+    blankProbeCanvas = document.createElement("canvas");
+    blankProbeCanvas.width = SIZE;
+    blankProbeCanvas.height = SIZE;
+  }
+
+  const probe = blankProbeCanvas.getContext("2d", { willReadFrequently: true });
+  if (!probe) return false;
+
+  probe.clearRect(0, 0, SIZE, SIZE);
+  probe.drawImage(source, 0, 0, SIZE, SIZE);
+
+  let pixels: Uint8ClampedArray;
+  try {
+    pixels = probe.getImageData(0, 0, SIZE, SIZE).data;
+  } catch {
+    // Shouldn't happen for a getUserMedia canvas, but never block a check-in
+    // just because we couldn't inspect it.
+    return false;
+  }
+
+  const count = SIZE * SIZE;
+  let sum = 0;
+  let sumOfSquares = 0;
+
+  for (let i = 0; i < pixels.length; i += 4) {
+    const luma =
+      0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+    sum += luma;
+    sumOfSquares += luma * luma;
+  }
+
+  const mean = sum / count;
+  const stdev = Math.sqrt(Math.max(sumOfSquares / count - mean * mean, 0));
+
+  return mean < MAX_MEAN && stdev < MAX_STDEV;
+}
+
 function AttendanceCard({ record }: { record: AttendanceRecord }) {
   // Punctuality score is 0–20 (0 = late, 20 = early); 10 is still late
   const status = record.punctualityScore > 10 ? "Early" : "Late";
@@ -423,6 +555,7 @@ function StudentCheckInView() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [filterMonth, setFilterMonth] = useState("all");
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
   const [attendanceHistory, setAttendanceHistory] = useState<
     AttendanceRecord[]
   >([]);
@@ -501,6 +634,7 @@ function StudentCheckInView() {
 
   const startCamera = useCallback(async () => {
     setCameraError(null);
+    setCameraReady(false);
     setCheckInStatus("camera");
 
     try {
@@ -517,6 +651,10 @@ function StudentCheckInView() {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
+        // `play()` only resolves once playback starts, not once a frame has been
+        // decoded — capturing before that is what produces the all-black photos.
+        await waitForVideoFrame(videoRef.current);
+        setCameraReady(true);
       }
     } catch (error) {
       console.error("Camera error:", error);
@@ -531,12 +669,45 @@ function StudentCheckInView() {
     if (videoRef.current && canvasRef.current && locationData) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      const context = canvas.getContext("2d");
+      // alpha: false so an unpainted canvas is explicitly opaque black rather
+      // than transparent black that JPEG encoding silently flattens.
+      const context = canvas.getContext("2d", { alpha: false });
 
       if (context) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        context.drawImage(video, 0, 0);
+        if (!cameraReady || video.readyState < 2 || !video.videoWidth) {
+          toast.error("Camera isn't ready yet — please wait a moment.");
+          return;
+        }
+
+        const drawFrame = () => {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          // Mirror to match the preview, which is CSS-flipped for a selfie view.
+          context.save();
+          context.translate(canvas.width, 0);
+          context.scale(-1, 1);
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          context.restore();
+        };
+
+        drawFrame();
+
+        // Backstop for the cases the readiness gate can't see, e.g. a track that
+        // goes muted between the gate and the tap. Retry on the next real frame.
+        for (let attempt = 0; attempt < 2 && isBlankFrame(canvas); attempt++) {
+          try {
+            await waitForVideoFrame(video, 1000);
+          } catch {
+            break;
+          }
+          drawFrame();
+        }
+
+        if (isBlankFrame(canvas)) {
+          // Leave the camera running so the user can simply tap again.
+          toast.error("Couldn't capture a clear photo — please try again.");
+          return;
+        }
 
         const imageData = canvas.toDataURL("image/jpeg", 0.8);
         setCapturedImage(imageData);
@@ -545,6 +716,7 @@ function StudentCheckInView() {
           streamRef.current.getTracks().forEach((track) => track.stop());
           streamRef.current = null;
         }
+        setCameraReady(false);
 
         setCheckInStatus("processing");
 
@@ -580,13 +752,14 @@ function StudentCheckInView() {
         }
       }
     }
-  }, [locationData, fetchAttendanceHistory]);
+  }, [locationData, fetchAttendanceHistory, cameraReady]);
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
+    setCameraReady(false);
     setCheckInStatus("idle");
   }, []);
 
@@ -595,6 +768,7 @@ function StudentCheckInView() {
     setCapturedImage(null);
     setShowSuccess(false);
     setCameraError(null);
+    setCameraReady(false);
   }, []);
 
   const canCheckIn = locationStatus === "granted";
@@ -729,6 +903,12 @@ function StudentCheckInView() {
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="w-48 h-48 sm:w-56 sm:h-56 rounded-full border-4 border-white/50" />
                 </div>
+                {!cameraReady && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60">
+                    <Loader2 className="h-6 w-6 animate-spin text-[#ffb703]" />
+                    <p className="text-xs text-white/80">Starting camera…</p>
+                  </div>
+                )}
               </div>
               <canvas ref={canvasRef} className="hidden" />
               <div className="flex gap-3">
@@ -741,7 +921,8 @@ function StudentCheckInView() {
                 </Button>
                 <Button
                   onClick={capturePhoto}
-                  className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+                  disabled={!cameraReady}
+                  className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500] disabled:opacity-50"
                 >
                   <Camera className="mr-2 h-4 w-4" />
                   Capture Photo
@@ -754,11 +935,11 @@ function StudentCheckInView() {
             <div className="flex flex-col items-center justify-center rounded-lg border border-border p-8 sm:p-12">
               {capturedImage && (
                 <div className="relative w-32 h-32 mb-4 rounded-full overflow-hidden">
+                  {/* Already mirrored on the canvas at capture time. */}
                   <img
                     src={capturedImage}
                     alt="Captured"
                     className="w-full h-full object-cover"
-                    style={{ transform: "scaleX(-1)" }}
                   />
                 </div>
               )}
@@ -771,11 +952,11 @@ function StudentCheckInView() {
             <div className="flex flex-col items-center justify-center rounded-lg border border-[#34a853] bg-[#34a853]/5 p-8 sm:p-12">
               {capturedImage && (
                 <div className="relative w-32 h-32 mb-4 rounded-full overflow-hidden">
+                  {/* Already mirrored on the canvas at capture time. */}
                   <img
                     src={capturedImage}
                     alt="Captured"
                     className="w-full h-full object-cover"
-                    style={{ transform: "scaleX(-1)" }}
                   />
                   <div className="absolute bottom-1 right-1 flex h-8 w-8 items-center justify-center rounded-full bg-[#34a853]">
                     <Check className="h-5 w-5 text-white" />
