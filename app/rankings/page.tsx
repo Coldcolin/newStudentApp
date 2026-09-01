@@ -21,7 +21,7 @@ import axiosInstance, { type ApiError } from "@/lib/api/axios";
 import {
   type TopPerformer,
   getTopPerformersByWeek,
-  toDisplayScore,
+  formatScore20,
 } from "@/lib/api/assignments";
 import { buildWeekOptions } from "@/lib/api/settings";
 import { useProgramSettings } from "@/components/providers/program-settings-provider";
@@ -496,7 +496,7 @@ export default function RankingsPage() {
                         <div className="mt-2 flex items-center gap-1">
                           <Trophy className="h-4 w-4 text-[#ffb703]" />
                           <span className="text-sm font-bold text-[#34a853]">
-                            {toDisplayScore(performer.grade)}%
+                            {formatScore20(performer.grade)}/20
                           </span>
                           {performer.tiedCount > 1 && (
                             <span className="ml-1 text-xs text-muted-foreground">

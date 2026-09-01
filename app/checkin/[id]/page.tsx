@@ -126,7 +126,7 @@ function StudentAttendanceCard({ record }: { record: AttendanceRecord }) {
           <p className="text-sm text-muted-foreground mt-1">
             Score:{" "}
             <span className="font-medium text-foreground">
-              {record.punctualityScore}%
+              {record.punctualityScore * 5}%
             </span>
           </p>
         </CardContent>
@@ -138,7 +138,7 @@ function StudentAttendanceCard({ record }: { record: AttendanceRecord }) {
             <DialogTitle>Check-in Photo</DialogTitle>
             <DialogDescription>
               {formattedDate} · {formattedTime} · Score:{" "}
-              {record.punctualityScore}%
+              {record.punctualityScore * 5}%
             </DialogDescription>
             <img
               src={record.image!.url}

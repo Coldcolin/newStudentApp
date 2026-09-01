@@ -48,6 +48,8 @@ export interface StudentSubmission {
   submittedAt: string;
   isLate: boolean;
   grade: number | null;
+  /** The tutor's comment, stored alongside the grade. */
+  feedback?: string | null;
 }
 
 /**
@@ -323,15 +325,18 @@ export async function getSubmissionById(
 // Grading Management APIs
 
 /**
- * Grade a submission (Admin/Tutor only)
+ * Grade a submission (Admin/Tutor only). `grade` is on the stored 0-20 scale.
+ * `feedback` is omitted from the payload when undefined, so a grade-only save
+ * leaves any existing comment untouched.
  */
 export async function gradeSubmission(
   submissionId: string,
   grade: number,
+  feedback?: string,
 ): Promise<GradeSubmissionResponse> {
   const response = await axiosInstance.patch(
     `/api/grading/submission/${submissionId}`,
-    { grade },
+    { grade, ...(feedback !== undefined && { feedback }) },
   );
   return response.data;
 }
@@ -515,6 +520,12 @@ export async function getTopPerformersByWeek(
   return response.data;
 }
 
-/** The API stores grades out of 20, the UI shows them out of 100. */
-export const toDisplayScore = (grade: number | null) =>
-  grade === null || grade === undefined ? null : grade * 5;
+/**
+ * Assignment grades are stored and shown on the backend's native 0-20 scale
+ * (AssignmentSubmission.grade is min: 0, max: 20). Whole numbers print bare so a
+ * clean 18 does not read as "18.0".
+ */
+export const formatScore20 = (value: number | null | undefined): string => {
+  if (typeof value !== "number") return "-";
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+};

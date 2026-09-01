@@ -92,7 +92,7 @@ import {
   addStudentRating,
   getStudentPerformanceReview,
   uploadRatingsExcel,
-  toDisplayScore,
+  formatScore20,
 } from "@/lib/api/assignments";
 import { buildWeekOptions } from "@/lib/api/settings";
 import {
@@ -107,6 +107,7 @@ interface StudentRecord {
   _id: string;
   name: string;
   email: string;
+  image?: string;
   overallRating: number;
   weeklyRating: number;
   stack: string;
@@ -197,15 +198,6 @@ const normalizeStackForApi = (
 const formatBreakdownValue = (value: number | null | undefined): string =>
   typeof value === "number" ? `${value}/20` : "-";
 
-// Assignment scores stay on their native 0-20 scale rather than being converted
-// to a percentage like the rest of this page, because 20 is the scale a tutor
-// enters the "Assignments" rating category on. Whole numbers print bare so a
-// clean 18 does not read as "18.0".
-const formatScore20 = (value: number | null | undefined): string => {
-  if (typeof value !== "number") return "-";
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
-};
-
 const assignmentScoreStatusClass = (
   status: "Graded" | "Pending" | "Not Submitted",
 ) => {
@@ -263,8 +255,8 @@ interface Submission {
   submittedDate: string;
   status: "Graded" | "Pending";
   score?: number;
+  /** The tutor's comment, edited in the grading modal and shown on the card. */
   feedback?: string;
-  comments?: string;
   submissionLink?: string;
 }
 
@@ -519,12 +511,14 @@ function StudentAssessmentView({
   studentName,
   studentId,
   studentStack,
+  studentImage,
   isAdminViewing = false,
   onBack,
 }: {
   studentName?: string;
   studentId?: string;
   studentStack?: string;
+  studentImage?: string;
   isAdminViewing?: boolean;
   onBack?: () => void;
 }) {
@@ -793,7 +787,7 @@ function StudentAssessmentView({
       descriptionFormat: assignment.descriptionFormat,
       dueDate: assignment.dueDateTime,
       status,
-      score: submission?.grade ? submission.grade * 5 : undefined, // Convert 0-20 to 0-100
+      score: submission?.grade ?? undefined,
       assignment,
     };
   });
@@ -807,15 +801,16 @@ function StudentAssessmentView({
         : "Unknown Assignment",
     submittedDate: sub.submittedAt,
     status: sub.status ,
-    score: sub.grade ? sub.grade * 5 : undefined, // Convert 0-20 to 0-100
+    score: sub.grade ?? undefined,
+    feedback: sub.feedback ?? undefined,
     submissionLink: sub.submissionLink,
   }));
 
   const handleSubmissionClick = (submission: Submission) => {
     if (!isAdminViewing) return;
     setSelectedSubmission(submission);
-    setScoreInput(submission.score?.toString() || "");
-    setCommentsInput(submission.comments || "");
+    setScoreInput(submission.score?.toString() ?? "");
+    setCommentsInput(submission.feedback ?? "");
     setIsScoreModalOpen(true);
   };
 
@@ -889,14 +884,13 @@ function StudentAssessmentView({
   };
 
   const handleSaveScore = async () => {
-    const score = parseInt(scoreInput, 10);
-    if (isNaN(score) || score < 0 || score > 100) {
-      toast.error("Please enter a valid score between 0 and 100");
+    // Graded on the backend's native 0-20 scale, so the entered value is stored
+    // verbatim. Number rather than parseInt so a half mark like 17.5 survives.
+    const score = Number(scoreInput);
+    if (!Number.isFinite(score) || score < 0 || score > 20) {
+      toast.error("Please enter a valid score between 0 and 20");
       return;
     }
-
-    // Convert 0-100 score to 0-20 for API
-    const apiGrade = Math.round(score / 5);
 
     if (!selectedSubmission?._id || !isAdminViewing) {
       // For non-admin or mock data, just show success
@@ -910,7 +904,7 @@ function StudentAssessmentView({
 
     setIsGrading(true);
     try {
-      await gradeSubmission(selectedSubmission._id, apiGrade);
+      await gradeSubmission(selectedSubmission._id, score, commentsInput);
       toast.success(`Score saved for ${selectedSubmission?.title}`);
       setIsScoreModalOpen(false);
       setSelectedSubmission(null);
@@ -1026,9 +1020,7 @@ function StudentAssessmentView({
           <CardContent className="py-4">
             <div className="flex items-center gap-4">
               <Avatar className="h-14 w-14 ring-2 ring-[#ffb703]">
-                <AvatarImage
-                  src={`/placeholder.svg?height=56&width=56&query=student%20${studentId}`}
-                />
+                <AvatarImage src={studentImage} alt={studentName} />
                 <AvatarFallback className="bg-[#ffb703] text-lg">
                   {studentName
                     ?.split(" ")
@@ -1164,11 +1156,11 @@ function StudentAssessmentView({
                           </p>
                         </div>
                       </div>
-                      {(task.score || isAdminViewing) && (
+                      {(task.score != null || isAdminViewing) && (
                         <div className="flex items-center gap-3 sm:justify-end">
-                          {task.score && (
+                          {task.score != null && (
                             <span className="text-2xl font-bold text-[#34a853]">
-                              {task.score}%
+                              {formatScore20(task.score)}/20
                             </span>
                           )}
                           {isAdminViewing && (
@@ -1552,10 +1544,10 @@ function StudentAssessmentView({
                         </p>
                       )}
                     </div>
-                    {submission.score && (
+                    {submission.score != null && (
                       <div className="text-right">
                         <span className="text-2xl font-bold text-[#34a853]">
-                          {submission.score}%
+                          {formatScore20(submission.score)}/20
                         </span>
                       </div>
                     )}
@@ -1582,9 +1574,7 @@ function StudentAssessmentView({
             {isAdminViewing && studentName && (
               <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                 <Avatar className="h-10 w-10 ring-2 ring-[#ffb703]">
-                  <AvatarImage
-                    src={`/placeholder.svg?height=40&width=40&query=student%20${studentId}`}
-                  />
+                  <AvatarImage src={studentImage} alt={studentName} />
                   <AvatarFallback className="bg-[#ffb703] text-sm">
                     {studentName
                       ?.split(" ")
@@ -1595,7 +1585,7 @@ function StudentAssessmentView({
                 <div>
                   <p className="font-medium text-sm">{studentName}</p>
                   <p className="text-xs text-muted-foreground">
-                    Frontend Development
+                    {studentStack || "Frontend Development"}
                   </p>
                 </div>
               </div>
@@ -1626,13 +1616,13 @@ function StudentAssessmentView({
                     : ""}
                 </span>
               </div>
-              {selectedSubmission?.score && (
+              {selectedSubmission?.score != null && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">
                     Current Score
                   </span>
                   <span className="text-sm font-bold text-[#34a853]">
-                    {selectedSubmission.score}%
+                    {formatScore20(selectedSubmission.score)}/20
                   </span>
                 </div>
               )}
@@ -1641,20 +1631,20 @@ function StudentAssessmentView({
             {/* Score Input */}
             <div className="space-y-2">
               <Label htmlFor="score" className="text-sm font-medium">
-                Submission Score (0-100)
+                Submission Score (0-20)
               </Label>
               <Input
                 id="score"
                 type="number"
                 min="0"
-                max="100"
-                placeholder="Enter score percentage"
+                max="20"
+                placeholder="Enter score out of 20"
                 value={scoreInput}
                 onChange={(e) => setScoreInput(e.target.value)}
                 className="h-12"
               />
               <p className="text-xs text-muted-foreground">
-                Enter a value between 0 and 100
+                Enter a value between 0 and 20
               </p>
             </div>
 
@@ -2088,7 +2078,7 @@ function AdminAssessmentView() {
       });
 
       // Map to assessment format
-      const mapped = filtered.map((student, index) => ({
+      const mapped = filtered.map((student) => ({
         _id: student._id,
         name: student.name,
         stack:
@@ -2100,7 +2090,7 @@ function AdminAssessmentView() {
         week: student.weeklyRating ? currentWeek : null,
         hasCheck: student.weeklyRating !== null,
         avgPercent: student.overallRating ? `${student.overallRating}%` : null,
-        avatar: `/placeholder.svg?height=40&width=40&query=student%20${index + 1}`,
+        avatar: student.image,
       }));
 
       setStudents(mapped);
@@ -2259,10 +2249,15 @@ function AdminAssessmentView() {
   };
 
   const handleTaskBoard = (student: StudentAssessment) => {
-    // Navigate to task board page with student info including stack
-    router.push(
-      `/assessments?studentId=${student._id}&studentName=${encodeURIComponent(student.name)}&studentStack=${encodeURIComponent(student.stack)}`,
-    );
+    const params = new URLSearchParams({
+      studentId: student._id,
+      studentName: student.name,
+      studentStack: student.stack,
+    });
+    if (student.avatar) {
+      params.set("studentImage", student.avatar);
+    }
+    router.push(`/assessments?${params.toString()}`);
   };
 
   const handleReviewAttendance = (student: StudentAssessment) => {
@@ -2281,14 +2276,30 @@ function AdminAssessmentView() {
       return;
     }
 
+    // Each rating category is scored 0-20; the five sum to a 0-100 total.
+    const categories = {
+      Punctuality: Number(gradeData.punctuality),
+      Assignments: Number(gradeData.assignments),
+      Attendance: Number(gradeData.attendance),
+      "Class task": Number(gradeData.classTask),
+      "Personal defence": Number(gradeData.personalDefence),
+    };
+    const invalid = Object.entries(categories).find(
+      ([, value]) => !Number.isFinite(value) || value < 0 || value > 20,
+    );
+    if (invalid) {
+      toast.error(`${invalid[0]} must be between 0 and 20`);
+      return;
+    }
+
     setIsSavingGrade(true);
     try {
       await addStudentRating(selectedStudent._id, {
-        punctuality: parseInt(gradeData.punctuality, 10) || 0,
-        Assignments: parseInt(gradeData.assignments, 10) || 0,
-        classParticipation: parseInt(gradeData.attendance, 10) || 0,
-        classAssessment: parseInt(gradeData.classTask, 10) || 0,
-        personalDefense: parseInt(gradeData.personalDefence, 10) || 0,
+        punctuality: categories.Punctuality,
+        Assignments: categories.Assignments,
+        classParticipation: categories.Attendance,
+        classAssessment: categories["Class task"],
+        personalDefense: categories["Personal defence"],
         week: weekNum,
       });
 
@@ -2651,10 +2662,8 @@ function AdminAssessmentView() {
                         <TableCell className="hidden py-3 md:table-cell">
                           <Avatar className="h-10 w-10">
                             <AvatarImage
-                              src={
-                                student.avatar ||
-                                `/placeholder.svg?height=40&width=40&query=student%20${index}`
-                              }
+                              src={student.avatar}
+                              alt={student.name}
                             />
                             <AvatarFallback className="bg-[#ffb703]/20 text-xs">
                               {student.name
@@ -3035,7 +3044,7 @@ function AdminAssessmentView() {
               </div>
             ) : (
               assignmentSubmissions.map((submission) => {
-                const score = toDisplayScore(submission.grade);
+                const score = submission.grade ?? null;
                 return (
                   <div
                     key={submission._id}
@@ -3064,7 +3073,7 @@ function AdminAssessmentView() {
                             : "text-[#34a853]"
                         }`}
                       >
-                        {score === null ? "Ungraded" : `${score}%`}
+                        {score === null ? "Ungraded" : `${formatScore20(score)}/20`}
                       </span>
                       {submission.submissionLink && (
                         <a
@@ -3101,10 +3110,8 @@ function AdminAssessmentView() {
           <div className="flex flex-col items-center py-4">
             <Avatar className="h-16 w-16 ring-4 ring-[#34a853]">
               <AvatarImage
-                src={
-                  selectedStudent?.avatar ||
-                  "/placeholder.svg?height=64&width=64&query=student"
-                }
+                src={selectedStudent?.avatar}
+                alt={selectedStudent?.name}
               />
               <AvatarFallback className="bg-[#ffb703] text-lg">
                 {selectedStudent?.name
@@ -3125,6 +3132,9 @@ function AdminAssessmentView() {
               </Label>
               <Input
                 id="punctuality"
+                type="number"
+                min="0"
+                max="20"
                 value={gradeData.punctuality}
                 onChange={(e) =>
                   setGradeData({ ...gradeData, punctuality: e.target.value })
@@ -3141,6 +3151,9 @@ function AdminAssessmentView() {
               </Label>
               <Input
                 id="attendance"
+                type="number"
+                min="0"
+                max="20"
                 value={gradeData.attendance}
                 onChange={(e) =>
                   setGradeData({ ...gradeData, attendance: e.target.value })
@@ -3157,6 +3170,9 @@ function AdminAssessmentView() {
               </Label>
               <Input
                 id="classTask"
+                type="number"
+                min="0"
+                max="20"
                 value={gradeData.classTask}
                 onChange={(e) =>
                   setGradeData({ ...gradeData, classTask: e.target.value })
@@ -3173,6 +3189,9 @@ function AdminAssessmentView() {
               </Label>
               <Input
                 id="assignments"
+                type="number"
+                min="0"
+                max="20"
                 value={gradeData.assignments}
                 onChange={(e) =>
                   setGradeData({ ...gradeData, assignments: e.target.value })
@@ -3189,6 +3208,9 @@ function AdminAssessmentView() {
               </Label>
               <Input
                 id="personalDefence"
+                type="number"
+                min="0"
+                max="20"
                 value={gradeData.personalDefence}
                 onChange={(e) =>
                   setGradeData({
@@ -3527,6 +3549,7 @@ export default function AssessmentsPage() {
   const studentId = searchParams.get("studentId");
   const studentName = searchParams.get("studentName");
   const studentStack = searchParams.get("studentStack");
+  const studentImage = searchParams.get("studentImage");
 
   // If admin is viewing a specific student's task board
   if (isAdmin && studentId && studentName) {
@@ -3537,6 +3560,9 @@ export default function AssessmentsPage() {
           studentId={studentId}
           studentStack={
             studentStack ? decodeURIComponent(studentStack) : undefined
+          }
+          studentImage={
+            studentImage ? decodeURIComponent(studentImage) : undefined
           }
           isAdminViewing={true}
           onBack={() => router.push("/assessments")}
