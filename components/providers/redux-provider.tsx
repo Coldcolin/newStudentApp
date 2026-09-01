@@ -6,6 +6,7 @@ import { persistStore } from "redux-persist";
 import { PersistGate } from "redux-persist/integration/react";
 import { makeStore, AppStore } from "@/lib/store";
 import { setAuthHelpers } from "@/lib/api/axios";
+import { clearStoredToken } from "@/lib/auth-storage";
 
 interface ReduxProviderProps {
   children: React.ReactNode;
@@ -29,7 +30,12 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
   useEffect(() => {
     setAuthHelpers(
       () => currentStore.getState().auth.token,
-      () => currentStore.dispatch({ type: "auth/clearCredentials" }),
+      () => {
+        // Clear the raw token too - the request interceptor falls back to it
+        // when Redux has none, so a stale key keeps requests authenticated.
+        clearStoredToken();
+        currentStore.dispatch({ type: "auth/clearCredentials" });
+      },
     );
   }, [currentStore]);
 

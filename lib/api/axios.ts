@@ -4,6 +4,7 @@ import axios, {
   InternalAxiosRequestConfig,
   AxiosResponse,
 } from "axios";
+import { getStoredToken } from "@/lib/auth-storage";
 
 // API Configuration
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
@@ -66,6 +67,15 @@ function serializeResponseBody(data: unknown): string | null {
   }
 }
 
+// Endpoints where a 401/501 means "bad credentials", not "session expired",
+// so the global redirect-to-login must not fire.
+const AUTH_ENDPOINTS = ["/users/login", "/users/create"];
+
+function isAuthRequest(url: string | undefined): boolean {
+  if (!url) return false;
+  return AUTH_ENDPOINTS.some((endpoint) => url.includes(endpoint));
+}
+
 // Token getter function - will be set by the store
 let getAuthToken: (() => string | null) | null = null;
 let clearAuthCredentials: (() => void) | null = null;
@@ -98,8 +108,8 @@ axiosInstance.interceptors.request.use(
     let token = getAuthToken?.();
 
     // Fallback to localStorage/sessionStorage if Redux doesn't have it yet
-    if (!token && typeof window !== "undefined") {
-      token = localStorage.getItem("token") || sessionStorage.getItem("token");
+    if (!token) {
+      token = getStoredToken();
     }
 
     // Add Authorization header if token exists
@@ -172,25 +182,33 @@ axiosInstance.interceptors.response.use(
     if (error.response) {
       const { status } = error.response;
 
-      // 401 Unauthorized - clear credentials and redirect
-      if (status === 401) {
-        clearAuthCredentials?.();
-        if (typeof window !== "undefined") {
-          window.location.href = "/login";
+      // 401 Unauthorized / 501 Session Timeout - clear credentials and redirect.
+      // Skipped when the failing request IS the login or signup call: there is
+      // no session to expire, the hard navigation would tear down the page
+      // before its `finally` could reset the submit state, and it would hide
+      // the "wrong password" toast. Let the form handle those itself.
+      if (status === 401 || status === 501) {
+        if (isAuthRequest(originalRequest.url)) {
+          return Promise.reject(
+            new Error(
+              extractApiErrorMessage(
+                error.response.data,
+                "Invalid credentials. Please try again.",
+              ),
+            ),
+          );
         }
-        return Promise.reject(
-          new Error("Session expired. Please login again."),
-        );
-      }
 
-      // 501 Session Timeout - clear credentials and redirect
-      if (status === 501) {
         clearAuthCredentials?.();
         if (typeof window !== "undefined") {
           window.location.href = "/login";
         }
         return Promise.reject(
-          new Error("Session timeout. Please login to continue."),
+          new Error(
+            status === 401
+              ? "Session expired. Please login again."
+              : "Session timeout. Please login to continue.",
+          ),
         );
       }
 

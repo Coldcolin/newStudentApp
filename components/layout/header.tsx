@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useCurrentUser, useAppDispatch } from "@/lib/store/hooks";
 import { clearCredentials } from "@/lib/store/slices/authSlice";
+import { clearStoredToken } from "@/lib/auth-storage";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { MobileSidebarToggle } from "./sidebar";
@@ -27,6 +28,7 @@ export function Header({ title }: HeaderProps) {
   const router = useRouter();
 
   const handleLogout = () => {
+    clearStoredToken();
     dispatch(clearCredentials());
     toast.success("Logged out successfully");
     router.replace("/login");

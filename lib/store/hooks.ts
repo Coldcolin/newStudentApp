@@ -16,8 +16,6 @@ export const useIsAuthenticated = () =>
   useAppSelector((state) => state.auth.isAuthenticated);
 export const useCurrentUser = () => useAppSelector((state) => state.auth.user);
 export const useAuthToken = () => useAppSelector((state) => state.auth.token);
-export const useAuthLoading = () =>
-  useAppSelector((state) => state.auth.isLoading);
 export const useAuthError = () => useAppSelector((state) => state.auth.error);
 
 // User selectors

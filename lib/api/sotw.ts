@@ -38,10 +38,12 @@ export interface StudentOfTheMonthWinner {
   average: number;
 }
 
+// A stack with no students yields `null` for that slot rather than failing the
+// whole request, so callers must filter before reading a winner.
 export interface SelectStudentsOfTheMonthResponse {
-  front?: StudentOfTheMonthWinner;
-  back?: StudentOfTheMonthWinner;
-  product?: StudentOfTheMonthWinner;
+  front?: StudentOfTheMonthWinner | null;
+  back?: StudentOfTheMonthWinner | null;
+  product?: StudentOfTheMonthWinner | null;
 }
 
 /**

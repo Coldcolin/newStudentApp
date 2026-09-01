@@ -19,17 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  useAppDispatch,
-  useAuthLoading,
-  useAuthError,
-} from "@/lib/store/hooks";
-import {
-  registerUser,
-  clearError,
-  setLoading,
-  setCredentials,
-} from "@/lib/store/slices/authSlice";
+import { useAppDispatch, useAuthError } from "@/lib/store/hooks";
+import { clearError, setCredentials } from "@/lib/store/slices/authSlice";
 import { toast } from "sonner";
 import axiosInstance from "@/lib/api/axios";
 
@@ -66,7 +57,9 @@ type SignupFormData = z.infer<typeof signupSchema>;
 export default function SignupPage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const isLoading = useAuthLoading();
+  // Kept local: a submit-in-flight flag is per-form, and persisting it in
+  // Redux leaked it to localStorage and stuck the spinner across tabs.
+  const [isLoading, setIsLoading] = useState(false);
   // const authError = useAuthError();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -112,7 +105,7 @@ export default function SignupPage() {
     }
 
     dispatch(clearError());
-    dispatch(setLoading(true));
+    setIsLoading(true);
 
     try {
       // Create FormData for multipart/form-data request
@@ -160,7 +153,7 @@ export default function SignupPage() {
           : "Registration failed. Please try again.";
       toast.error(errorMessage);
     } finally {
-      dispatch(setLoading(false));
+      setIsLoading(false);
     }
   };
 

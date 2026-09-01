@@ -1,4 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
+import { getStoredToken } from "@/lib/auth-storage";
 
 // Types
 export interface User {
@@ -40,8 +41,7 @@ export const initializeAuth = createAsyncThunk("auth/initialize", async () => {
   }
 
   // Get token from storage (localStorage takes precedence)
-  const token =
-    localStorage.getItem("token") || sessionStorage.getItem("token");
+  const token = getStoredToken();
 
   if (!token) {
     return null;
@@ -150,9 +150,6 @@ const authSlice = createSlice({
     clearError: (state) => {
       state.error = null;
     },
-    setLoading: (state, action: PayloadAction<boolean>) => {
-      state.isLoading = action.payload;
-    },
     setCredentials: (
       state,
       action: PayloadAction<{
@@ -171,6 +168,8 @@ const authSlice = createSlice({
       state.token = null;
       state.refreshToken = null;
       state.isAuthenticated = false;
+      state.isLoading = false;
+      state.error = null;
     },
     updateUser: (state, action: PayloadAction<Partial<User>>) => {
       if (state.user) {
@@ -243,11 +242,6 @@ const authSlice = createSlice({
   },
 });
 
-export const {
-  clearError,
-  setLoading,
-  setCredentials,
-  clearCredentials,
-  updateUser,
-} = authSlice.actions;
+export const { clearError, setCredentials, clearCredentials, updateUser } =
+  authSlice.actions;
 export default authSlice.reducer;

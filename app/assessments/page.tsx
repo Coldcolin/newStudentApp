@@ -330,7 +330,7 @@ const stackByAssignmentType: Record<string, AssignmentStack> = {
   frontend: "Front End",
   backend: "Back End",
   "product design": "Product Design",
-  general: "Front End", // Default to Front End for general
+  general: "General",
 };
 
 const assignmentTypeByStack: Record<string, string> = {

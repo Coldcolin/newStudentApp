@@ -23,6 +23,7 @@ import {
 } from "@/lib/store/hooks";
 import { setSidebarOpen } from "@/lib/store/slices/uiSlice";
 import { clearCredentials } from "@/lib/store/slices/authSlice";
+import { clearStoredToken } from "@/lib/auth-storage";
 import { toast } from "sonner";
 import { useEffect } from "react";
 import Image from "next/image";
@@ -60,6 +61,7 @@ export function Sidebar() {
   const navigation = getNavigation(user?.role);
 
   const handleLogout = () => {
+    clearStoredToken();
     dispatch(clearCredentials());
     toast.success("Logged out successfully");
     router.replace("/login");

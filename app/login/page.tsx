@@ -19,17 +19,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 //   SelectTrigger,
 //   SelectValue,
 // } from "@/components/ui/select";
-import {
-  useAppDispatch,
-  useAuthLoading,
-  useAuthError,
-} from "@/lib/store/hooks";
-import {
-  loginUser,
-  clearError,
-  setLoading,
-  setCredentials,
-} from "@/lib/store/slices/authSlice";
+import { useAppDispatch, useAuthError } from "@/lib/store/hooks";
+import { clearError, setCredentials } from "@/lib/store/slices/authSlice";
+import { storeToken } from "@/lib/auth-storage";
 import { toast } from "sonner";
 import axiosInstance from "@/lib/api/axios";
 
@@ -44,7 +36,9 @@ type LoginFormData = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const isLoading = useAuthLoading();
+  // Kept local: a submit-in-flight flag is per-form, and persisting it in
+  // Redux leaked it to localStorage and stuck the spinner across tabs.
+  const [isLoading, setIsLoading] = useState(false);
   // const authError = useAuthError();
   const [showPassword, setShowPassword] = useState(false);
   // const [selectedRole, setSelectedRole] = useState<"admin" | "student">(
@@ -66,7 +60,7 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginFormData) => {
     dispatch(clearError());
-    dispatch(setLoading(true));
+    setIsLoading(true);
 
     try {
       const response = await axiosInstance.post("/users/login", {
@@ -79,11 +73,7 @@ export default function LoginPage() {
       const userId = userInfo?.id;
 
       // Store token in storage based on rememberMe preference
-      if (data.rememberMe) {
-        localStorage.setItem("token", token);
-      } else {
-        sessionStorage.setItem("token", token);
-      }
+      storeToken(token, Boolean(data.rememberMe));
 
       // Determine role based on stack: "Tutor" = admin, anything else = student
       const role = userInfo?.role === "tutor" || userInfo?.role === "admin" ? "admin" : "student";
@@ -149,7 +139,7 @@ export default function LoginPage() {
           : "Login failed. Please try again.";
       toast.error(errorMessage);
     } finally {
-      dispatch(setLoading(false));
+      setIsLoading(false);
     }
   };
 
