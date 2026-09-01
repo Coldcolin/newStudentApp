@@ -1152,7 +1152,9 @@ function StudentAssessmentView({
                             </button>
                           )}
                           <p className="text-xs text-muted-foreground">
-                            Due: {new Date(task.dueDate).toLocaleDateString()}
+                            Due:{" "}
+                            {task.assignment?.formattedDueDate ||
+                              new Date(task.dueDate).toLocaleDateString()}
                           </p>
                         </div>
                       </div>
@@ -1731,7 +1733,8 @@ function StudentAssessmentView({
                 <span className="text-muted-foreground">
                   Due:{" "}
                   {selectedTask
-                    ? new Date(selectedTask.dueDate).toLocaleDateString()
+                    ? selectedTask.assignment?.formattedDueDate ||
+                      new Date(selectedTask.dueDate).toLocaleDateString()
                     : ""}
                 </span>
               </div>
