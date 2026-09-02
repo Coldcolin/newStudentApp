@@ -341,6 +341,206 @@ const splitDueDateTime = (value: string) => {
   };
 };
 
+const submissionStatusColor = (status: string) => {
+  switch (status.toLowerCase()) {
+    case "completed":
+    case "graded":
+      return "bg-[#34a853]/10 text-[#34a853]";
+    case "in-progress":
+      return "bg-[#ffb703]/10 text-[#ffb703]";
+    case "pending":
+      return "bg-background text-muted-foreground";
+    case "late":
+      return "bg-[#ec1c24]/10 text-[#ec1c24]";
+    default:
+      return "bg-background text-muted-foreground";
+  }
+};
+
+const initialsFromName = (name?: string) =>
+  name
+    ?.split(" ")
+    .map((n) => n[0])
+    .join("") ?? "";
+
+function gradingToSubmission(submission: GradingSubmission): Submission {
+  return {
+    _id: submission._id,
+    title: submission.assignment?.title ?? "Unknown Assignment",
+    submittedDate: submission.submittedAt,
+    status: submission.status,
+    score: submission.grade ?? undefined,
+    feedback: submission.feedback,
+    submissionLink: submission.submissionLink,
+  };
+}
+
+function GradeSubmissionDialog({
+  open,
+  onOpenChange,
+  submission,
+  studentName,
+  studentImage,
+  studentStack,
+  scoreInput,
+  commentsInput,
+  onScoreInputChange,
+  onCommentsInputChange,
+  onSave,
+  onCancel,
+  isSaving,
+  stacked = false,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  submission: Submission | null;
+  studentName?: string;
+  studentImage?: string;
+  studentStack?: string;
+  scoreInput: string;
+  commentsInput: string;
+  onScoreInputChange: (value: string) => void;
+  onCommentsInputChange: (value: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  isSaving: boolean;
+  stacked?: boolean;
+}) {
+  useEffect(() => {
+    if (open || !stacked) return;
+    // Radix stacked dialogs can leave pointer-events: none on body after the
+    // top dialog closes, which makes the remaining list dialog unusable.
+    const frame = requestAnimationFrame(() => {
+      document.body.style.removeProperty("pointer-events");
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, stacked]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="sm:max-w-[500px]"
+        onCloseAutoFocus={(event) => {
+          if (stacked) event.preventDefault();
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle className="text-xl">Grade Submission</DialogTitle>
+          <DialogDescription>
+            Assign a score for {submission?.title}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6 py-4">
+          {studentName && (
+            <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+              <Avatar className="h-10 w-10 ring-2 ring-[#ffb703]">
+                <AvatarImage src={studentImage} alt={studentName} />
+                <AvatarFallback className="bg-[#ffb703] text-sm">
+                  {initialsFromName(studentName)}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="font-medium text-sm text-foreground">{studentName}</p>
+                <p className="text-xs text-muted-foreground">
+                  {studentStack || "Frontend Development"}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Status</span>
+              <Badge
+                className={
+                  submission ? submissionStatusColor(submission.status) : ""
+                }
+              >
+                {submission?.status.charAt(0).toUpperCase() +
+                  (submission?.status.slice(1) || "")}
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Submitted</span>
+              <span className="text-sm font-medium">
+                {submission
+                  ? new Date(submission.submittedDate).toLocaleDateString()
+                  : ""}
+              </span>
+            </div>
+            {submission?.score != null && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">
+                  Current Score
+                </span>
+                <span className="text-sm font-bold text-[#34a853]">
+                  {formatScore20(submission.score)}/20
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="score" className="text-sm font-medium">
+              Submission Score (0-20)
+            </Label>
+            <Input
+              id="score"
+              type="number"
+              min="0"
+              max="20"
+              placeholder="Enter score out of 20"
+              value={scoreInput}
+              onChange={(e) => onScoreInputChange(e.target.value)}
+              className="h-12 placeholder:opacity-100"
+            />
+            <p className="text-xs text-muted-foreground">
+              Enter a value between 0 and 20
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="comments" className="text-sm font-medium">
+              Instructor Comments
+            </Label>
+            <textarea
+              id="comments"
+              placeholder="Enter feedback or comments for the student..."
+              value={commentsInput}
+              onChange={(e) => onCommentsInputChange(e.target.value)}
+              className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground placeholder:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-y"
+            />
+            <p className="text-xs text-muted-foreground">
+              Provide constructive feedback to help the student improve
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button variant="outline" onClick={onCancel} disabled={isSaving}>
+            Cancel
+          </Button>
+          <Button
+            onClick={onSave}
+            disabled={isSaving}
+            className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save Score"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // Declared at module scope so the rich-text editor is not remounted (and does not
 // lose focus) on every keystroke in the surrounding form.
 function TaskFormFields({
@@ -1561,138 +1761,23 @@ function StudentAssessmentView({
         </TabsContent>
       </Tabs>
 
-      {/* Submission Scoring Modal */}
-      <Dialog open={isScoreModalOpen} onOpenChange={setIsScoreModalOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle className="text-xl">Grade Submission</DialogTitle>
-            <DialogDescription>
-              Assign a score for {selectedSubmission?.title}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-6 py-4">
-            {/* Student Info */}
-            {isAdminViewing && studentName && (
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <Avatar className="h-10 w-10 ring-2 ring-[#ffb703]">
-                  <AvatarImage src={studentImage} alt={studentName} />
-                  <AvatarFallback className="bg-[#ffb703] text-sm">
-                    {studentName
-                      ?.split(" ")
-                      .map((n) => n[0])
-                      .join("")}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-medium text-sm">{studentName}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {studentStack || "Frontend Development"}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Submission Details */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Status</span>
-                <Badge
-                  className={
-                    selectedSubmission
-                      ? getStatusColor(selectedSubmission.status)
-                      : ""
-                  }
-                >
-                  {selectedSubmission?.status.charAt(0).toUpperCase() +
-                    (selectedSubmission?.status.slice(1) || "")}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Submitted</span>
-                <span className="text-sm font-medium">
-                  {selectedSubmission
-                    ? new Date(
-                        selectedSubmission.submittedDate,
-                      ).toLocaleDateString()
-                    : ""}
-                </span>
-              </div>
-              {selectedSubmission?.score != null && (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    Current Score
-                  </span>
-                  <span className="text-sm font-bold text-[#34a853]">
-                    {formatScore20(selectedSubmission.score)}/20
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Score Input */}
-            <div className="space-y-2">
-              <Label htmlFor="score" className="text-sm font-medium">
-                Submission Score (0-20)
-              </Label>
-              <Input
-                id="score"
-                type="number"
-                min="0"
-                max="20"
-                placeholder="Enter score out of 20"
-                value={scoreInput}
-                onChange={(e) => setScoreInput(e.target.value)}
-                className="h-12"
-              />
-              <p className="text-xs text-muted-foreground">
-                Enter a value between 0 and 20
-              </p>
-            </div>
-
-            {/* Comments */}
-            <div className="space-y-2">
-              <Label htmlFor="comments" className="text-sm font-medium">
-                Instructor Comments
-              </Label>
-              <textarea
-                id="comments"
-                placeholder="Enter feedback or comments for the student..."
-                value={commentsInput}
-                onChange={(e) => setCommentsInput(e.target.value)}
-                className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-y"
-              />
-              <p className="text-xs text-muted-foreground">
-                Provide constructive feedback to help the student improve
-              </p>
-            </div>
-          </div>
-
-          <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button
-              variant="outline"
-              onClick={handleCloseModal}
-              disabled={isGrading}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSaveScore}
-              disabled={isGrading}
-              className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
-            >
-              {isGrading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                "Save Score"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <GradeSubmissionDialog
+        open={isScoreModalOpen}
+        onOpenChange={(open) => {
+          if (!open) handleCloseModal();
+        }}
+        submission={selectedSubmission}
+        studentName={isAdminViewing ? studentName : undefined}
+        studentImage={isAdminViewing ? studentImage : undefined}
+        studentStack={isAdminViewing ? studentStack : undefined}
+        scoreInput={scoreInput}
+        commentsInput={commentsInput}
+        onScoreInputChange={setScoreInput}
+        onCommentsInputChange={setCommentsInput}
+        onSave={handleSaveScore}
+        onCancel={handleCloseModal}
+        isSaving={isGrading}
+      />
 
       {/* Task Submission Modal (for students) */}
       <Dialog
@@ -1874,6 +1959,12 @@ function AdminAssessmentView() {
   >([]);
   const [isLoadingAssignmentSubmissions, setIsLoadingAssignmentSubmissions] =
     useState(false);
+  const [selectedGradingSubmission, setSelectedGradingSubmission] =
+    useState<GradingSubmission | null>(null);
+  const [isScoreModalOpen, setIsScoreModalOpen] = useState(false);
+  const [scoreInput, setScoreInput] = useState("");
+  const [commentsInput, setCommentsInput] = useState("");
+  const [isGrading, setIsGrading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   // const [students, setStudents] = useState<StudentAssessment[]>(
   //   mockStudentAssessments,
@@ -2206,6 +2297,60 @@ function AdminAssessmentView() {
       toast.error(apiError.message || "Failed to load submissions");
     } finally {
       setIsLoadingAssignmentSubmissions(false);
+    }
+  };
+
+  const handleCloseAssignmentGradeModal = () => {
+    setIsScoreModalOpen(false);
+    setSelectedGradingSubmission(null);
+    setScoreInput("");
+    setCommentsInput("");
+  };
+
+  const handleAssignmentSubmissionClick = (submission: GradingSubmission) => {
+    setSelectedGradingSubmission(submission);
+    setScoreInput(submission.grade?.toString() ?? "");
+    setCommentsInput(submission.feedback ?? "");
+    setIsScoreModalOpen(true);
+  };
+
+  const handleSaveAssignmentGrade = async () => {
+    const score = Number(scoreInput);
+    if (!Number.isFinite(score) || score < 0 || score > 20) {
+      toast.error("Please enter a valid score between 0 and 20");
+      return;
+    }
+
+    if (!selectedGradingSubmission?._id) return;
+
+    setIsGrading(true);
+    try {
+      await gradeSubmission(
+        selectedGradingSubmission._id,
+        score,
+        commentsInput,
+      );
+      toast.success(
+        `Score saved for ${selectedGradingSubmission.student?.name || "student"}`,
+      );
+      setAssignmentSubmissions((prev) =>
+        prev.map((item) =>
+          item._id === selectedGradingSubmission._id
+            ? {
+                ...item,
+                grade: score,
+                feedback: commentsInput,
+                status: "Graded" as const,
+              }
+            : item,
+        ),
+      );
+      handleCloseAssignmentGradeModal();
+    } catch (error) {
+      console.error("Failed to save grade:", error);
+      toast.error("Failed to save grade. Please try again.");
+    } finally {
+      setIsGrading(false);
     }
   };
 
@@ -3024,10 +3169,22 @@ function AdminAssessmentView() {
           if (!open) {
             setSubmissionsAssignment(null);
             setAssignmentSubmissions([]);
+            handleCloseAssignmentGradeModal();
           }
         }}
       >
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent
+          className="sm:max-w-[600px]"
+          onPointerDownOutside={(event) => {
+            if (isScoreModalOpen) event.preventDefault();
+          }}
+          onFocusOutside={(event) => {
+            if (isScoreModalOpen) event.preventDefault();
+          }}
+          onInteractOutside={(event) => {
+            if (isScoreModalOpen) event.preventDefault();
+          }}
+        >
           <DialogHeader>
             <DialogTitle>{submissionsAssignment?.title}</DialogTitle>
             <DialogDescription>
@@ -3051,7 +3208,8 @@ function AdminAssessmentView() {
                 return (
                   <div
                     key={submission._id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 border border-border rounded-lg"
+                    onClick={() => handleAssignmentSubmissionClick(submission)}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 border border-border rounded-lg cursor-pointer hover:bg-gray-50/50 hover:border-[#ffb703]/50 transition-colors"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -3085,6 +3243,7 @@ function AdminAssessmentView() {
                           rel="noopener noreferrer"
                           className="text-[#ffb703] hover:text-[#fb8500]"
                           aria-label={`Open submission by ${submission.student?.name || "student"}`}
+                          onClick={(e) => e.stopPropagation()}
                         >
                           <ExternalLink className="h-4 w-4" />
                         </a>
@@ -3097,6 +3256,29 @@ function AdminAssessmentView() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <GradeSubmissionDialog
+        open={isScoreModalOpen}
+        onOpenChange={(open) => {
+          if (!open) handleCloseAssignmentGradeModal();
+        }}
+        submission={
+          selectedGradingSubmission
+            ? gradingToSubmission(selectedGradingSubmission)
+            : null
+        }
+        studentName={selectedGradingSubmission?.student?.name}
+        studentImage={selectedGradingSubmission?.student?.image}
+        studentStack={selectedGradingSubmission?.student?.stack}
+        scoreInput={scoreInput}
+        commentsInput={commentsInput}
+        onScoreInputChange={setScoreInput}
+        onCommentsInputChange={setCommentsInput}
+        onSave={handleSaveAssignmentGrade}
+        onCancel={handleCloseAssignmentGradeModal}
+        isSaving={isGrading}
+        stacked
+      />
 
       {/* Grade Student Dialog */}
       <Dialog open={showGradeDialog} onOpenChange={setShowGradeDialog}>
