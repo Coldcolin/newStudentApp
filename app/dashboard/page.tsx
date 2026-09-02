@@ -288,10 +288,10 @@ export default function DashboardPage() {
                             </AvatarFallback>
                           </Avatar>
                         </div>
-                        <h3 className="mt-3 text-center font-semibold text-foreground text-sm md:text-base">
+                        <h3 className="mt-3 text-center font-semibold text-[#333333] text-sm md:text-base">
                           {student.name}
                         </h3>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-[#687182]">
                           {student.role}
                         </p>
                       </CardContent>
