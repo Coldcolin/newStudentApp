@@ -16,6 +16,7 @@ import { clearStoredToken } from "@/lib/auth-storage";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { MobileSidebarToggle } from "./sidebar";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { toast } from "sonner";
 
 interface HeaderProps {
@@ -41,8 +42,10 @@ export function Header({ title }: HeaderProps) {
         <MobileSidebarToggle />
       </div>
 
-      {/* User Profile - Right Aligned */}
-      <div className="flex items-center">
+      {/* Notifications + User Profile - Right Aligned */}
+      <div className="flex items-center gap-1">
+        <NotificationBell />
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button

@@ -65,6 +65,7 @@ import {
   richTextToPlain,
   toEditorHtml,
 } from "@/lib/rich-text";
+import { splitCohortDateTime, formatCohortDueDate } from "@/lib/date/cohort-time";
 import { useCurrentUser } from "@/lib/store/hooks";
 import { useProgramSettings } from "@/components/providers/program-settings-provider";
 import { toast } from "sonner";
@@ -325,20 +326,6 @@ const assignmentTypeByStack: Record<string, string> = {
   "Back End": "backend",
   "Product Design": "product design",
   General: "general",
-};
-
-// Splits a stored dueDateTime into the local date/time strings the API expects back,
-// matching how the backend reassembles them (new Date(y, m - 1, d, h, min)).
-const splitDueDateTime = (value: string) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return { deadline: "", deadlineTime: "23:59" };
-  }
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return {
-    deadline: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
-    deadlineTime: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
-  };
 };
 
 const submissionStatusColor = (status: string) => {
@@ -1354,7 +1341,7 @@ function StudentAssessmentView({
                           <p className="text-xs text-muted-foreground">
                             Due:{" "}
                             {task.assignment?.formattedDueDate ||
-                              new Date(task.dueDate).toLocaleDateString()}
+                              formatCohortDueDate(task.dueDate)}
                           </p>
                         </div>
                       </div>
@@ -1819,7 +1806,7 @@ function StudentAssessmentView({
                   Due:{" "}
                   {selectedTask
                     ? selectedTask.assignment?.formattedDueDate ||
-                      new Date(selectedTask.dueDate).toLocaleDateString()
+                      formatCohortDueDate(selectedTask.dueDate)
                     : ""}
                 </span>
               </div>
@@ -2516,7 +2503,7 @@ function AdminAssessmentView() {
   };
 
   const handleOpenEditTask = (assignment: Assignment) => {
-    const { deadline, deadlineTime } = splitDueDateTime(assignment.dueDateTime);
+    const { deadline, deadlineTime } = splitCohortDateTime(assignment.dueDateTime);
 
     setEditTaskFormData({
       title: assignment.title,
@@ -2555,6 +2542,14 @@ function AdminAssessmentView() {
     const stackChanged =
       editTaskFormData.assignmentType !== originalAssignmentType;
 
+    // Same reasoning for the deadline: sending it on every edit means a rename
+    // re-submits the due date, so any disagreement between how the form reads a
+    // stored instant and how the server rebuilds it would compound each save.
+    const originalDue = splitCohortDateTime(assignmentToEdit.dueDateTime);
+    const dueChanged =
+      editTaskFormData.deadline !== originalDue.deadline ||
+      editTaskFormData.deadlineTime !== originalDue.deadlineTime;
+
     setIsSavingTask(true);
     try {
       await updateAssignment(assignmentToEdit._id, {
@@ -2568,8 +2563,12 @@ function AdminAssessmentView() {
                 "Front End",
             }
           : {}),
-        dueDate: editTaskFormData.deadline,
-        dueTime: editTaskFormData.deadlineTime,
+        ...(dueChanged
+          ? {
+              dueDate: editTaskFormData.deadline,
+              dueTime: editTaskFormData.deadlineTime,
+            }
+          : {}),
         allowLateSubmissions: editTaskFormData.allowLateSubmission,
       });
 
@@ -3056,9 +3055,7 @@ function AdminAssessmentView() {
                             <div className="flex items-center gap-2 whitespace-nowrap">
                               <span className="text-sm text-muted-foreground">
                                 {assignment.formattedDueDate ||
-                                  new Date(
-                                    assignment.dueDateTime,
-                                  ).toLocaleDateString()}
+                                  formatCohortDueDate(assignment.dueDateTime)}
                               </span>
                               {isOverdue(assignment) && (
                                 <Badge className="bg-[#ec1c24]/10 text-[#ec1c24] hover:bg-[#ec1c24]/10">
@@ -3189,7 +3186,13 @@ function AdminAssessmentView() {
             <DialogTitle>{submissionsAssignment?.title}</DialogTitle>
             <DialogDescription>
               Week {submissionsAssignment?.week} ·{" "}
-              {submissionsAssignment?.stack} · submissions for this task
+              {submissionsAssignment?.stack}
+              {!isLoadingAssignmentSubmissions &&
+                ` · ${assignmentSubmissions.length} ${
+                  assignmentSubmissions.length === 1
+                    ? "submission"
+                    : "submissions"
+                }`}
             </DialogDescription>
           </DialogHeader>
 
@@ -3203,7 +3206,7 @@ function AdminAssessmentView() {
                 <p>No submissions for this task yet.</p>
               </div>
             ) : (
-              assignmentSubmissions.map((submission) => {
+              assignmentSubmissions.map((submission, index) => {
                 const score = submission.grade ?? null;
                 return (
                   <div
@@ -3213,6 +3216,9 @@ function AdminAssessmentView() {
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-muted-foreground w-5 shrink-0">
+                          {index + 1}.
+                        </span>
                         <span className="text-sm font-medium">
                           {submission.student?.name || "Unknown student"}
                         </span>

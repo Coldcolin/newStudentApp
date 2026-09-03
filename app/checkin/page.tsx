@@ -53,6 +53,8 @@ import { useCurrentUser } from "@/lib/store/hooks";
 import axiosInstance, { api } from "@/lib/api/axios";
 import { toast } from "sonner";
 import { usePersistedState } from "@/hooks/use-persisted-state";
+import { MyExceptionRequests } from "@/components/attendance/my-exception-requests";
+import { ExceptionReviewPanel } from "@/components/attendance/exception-review-panel";
 
 type CheckInStatus = "idle" | "camera" | "processing" | "success" | "error";
 type LocationStatus = "idle" | "requesting" | "granted" | "denied";
@@ -67,6 +69,12 @@ interface AttendanceRecord {
     url: string;
     public_id: string;
   };
+  /**
+   * "excused" rows come from an approved class-exception request rather than a
+   * check-in: no time, no location, no image. They carry a 0 the backend
+   * excludes from every average, so never render their score as a result.
+   */
+  status?: "present" | "excused";
   userId: string[];
   createdAt: string;
   updatedAt: string;
@@ -118,6 +126,10 @@ interface StudentsApiResponse {
 }
 
 const tabs = ["Front-End", "Back-End", "Product Design"];
+
+// The two things a tutor does on this page: look at the roster, or work the
+// class-exception review queue.
+const adminSections = ["students", "exceptions"] as const;
 
 /**
  * Resolves once the video has actually presented a decoded frame.
@@ -259,6 +271,38 @@ function AttendanceCard({ record }: { record: AttendanceRecord }) {
     day: "numeric",
     year: "numeric",
   });
+
+  // An excused day has no check-in time, location or photo, and its stored 0 is
+  // a placeholder the backend keeps out of every average — so it gets its own
+  // card rather than falling through the layout below and rendering "0%" next
+  // to an "Invalid Date" time.
+  if (record.status === "excused") {
+    return (
+      <Card className="border border-dashed border-border shadow-sm overflow-hidden">
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex flex-col gap-2 mb-3">
+            <Badge
+              variant="outline"
+              className="rounded-full bg-muted text-muted-foreground border-border font-medium text-[10px] sm:text-xs px-2 py-0.5 w-fit truncate max-w-full"
+            >
+              {formattedDate}
+            </Badge>
+            <Badge
+              variant="outline"
+              className="rounded-full bg-[#219ebc]/10 text-[#219ebc] border-[#219ebc] text-[10px] sm:text-xs font-medium w-fit px-2 py-0.5"
+            >
+              Excused
+            </Badge>
+          </div>
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            Approved class exception. This day isn&apos;t counted in your
+            punctuality score.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   const formattedTime = new Date(
     `2000-01-01T${record.time}`,
   ).toLocaleTimeString("en-US", {
@@ -390,6 +434,11 @@ const normalizeStack = (stack: string) =>
 // Admin Attendance View Component
 function AdminAttendanceView() {
   const router = useRouter();
+  const [activeSection, setActiveSection] = usePersistedState(
+    "thecurve:checkin:admin-section",
+    "students",
+    adminSections,
+  );
   const [activeTab, setActiveTab] = usePersistedState(
     "thecurve:checkin:stack",
     "Front-End",
@@ -442,6 +491,27 @@ function AdminAttendanceView() {
         <h1 className="text-2xl font-bold text-foreground">Attendance</h1>
       </div>
 
+      {/* Section toggle: the student roster, or the exception review queue */}
+      <div className="flex flex-wrap gap-2">
+        {adminSections.map((section) => (
+          <button
+            key={section}
+            onClick={() => setActiveSection(section)}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+              activeSection === section
+                ? "bg-[#08022b] text-white"
+                : "bg-card text-foreground hover:bg-muted border border-border"
+            }`}
+          >
+            {section === "students" ? "Students" : "Class Exceptions"}
+          </button>
+        ))}
+      </div>
+
+      {activeSection === "exceptions" ? (
+        <ExceptionReviewPanel />
+      ) : (
+        <>
       {/* Search Input */}
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -541,6 +611,8 @@ function AdminAttendanceView() {
           )}
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   );
 }
@@ -1001,6 +1073,9 @@ function StudentCheckInView() {
           )}
         </CardContent>
       </Card>
+
+      {/* Class Exceptions Section */}
+      <MyExceptionRequests />
 
       {/* Attendance History Section */}
       <div>
