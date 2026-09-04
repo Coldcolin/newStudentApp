@@ -4,24 +4,29 @@ import { useCallback, useEffect, useState } from "react";
 import { CalendarOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RequestExceptionDialog } from "./request-exception-dialog";
-import { ExceptionStatusBadge } from "./exception-status-badge";
+import { ExceptionAllowanceMeter } from "./exception-allowance-meter";
+import {
+  ExceptionStatusBadge,
+  EmergencyBadge,
+} from "./exception-status-badge";
 import {
   getMyExceptionRequests,
   formatExceptionDate,
   type ClassExceptionRequest,
+  type ExceptionAllowance,
 } from "@/lib/api/class-exceptions";
 
 /**
- * A student's own class-exception requests, with the entry point to make a new
- * one.
+ * A student's own class-exception requests, the days they have left, and the
+ * entry point to make a new one.
  *
- * Nothing here shows how many requests are left, and nothing should: the cap is
- * enforced server-side and deliberately hidden. The button stays visible even
- * once a student is out of tries — a disappearing button is conspicuous, and
- * comparing notes with a classmate would give the limit away.
+ * The button stays visible once the allowance is spent — at that point it opens
+ * in emergency mode rather than disappearing, since an emergency is exactly
+ * when someone needs it most.
  */
 export function MyExceptionRequests() {
   const [requests, setRequests] = useState<ClassExceptionRequest[]>([]);
+  const [allowance, setAllowance] = useState<ExceptionAllowance | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
@@ -29,6 +34,7 @@ export function MyExceptionRequests() {
     try {
       const data = await getMyExceptionRequests();
       setRequests(data.requests ?? []);
+      setAllowance(data.allowance ?? null);
     } catch (error) {
       console.error("Failed to load exception requests:", error);
     } finally {
@@ -42,7 +48,7 @@ export function MyExceptionRequests() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-foreground">
             Class exceptions
@@ -51,13 +57,24 @@ export function MyExceptionRequests() {
             Let your tutors know in advance when you can&apos;t make a class
           </p>
         </div>
-        <Button
-          onClick={() => setIsDialogOpen(true)}
-          className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
-        >
-          <CalendarOff className="mr-2 h-4 w-4" />
-          Request exception
-        </Button>
+
+        <div className="flex flex-wrap items-center gap-3">
+          {allowance && <ExceptionAllowanceMeter allowance={allowance} />}
+          <Button
+            onClick={() => setIsDialogOpen(true)}
+            disabled={isLoading}
+            className={
+              allowance?.emergencyOnly
+                ? "bg-[#ec1c24] text-white hover:bg-[#c81820]"
+                : "bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+            }
+          >
+            <CalendarOff className="mr-2 h-4 w-4" />
+            {allowance?.emergencyOnly
+              ? "Emergency request"
+              : "Request exception"}
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -81,13 +98,16 @@ export function MyExceptionRequests() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 space-y-1">
                   <p className="text-sm font-semibold text-foreground">
-                    {request.dates.map(formatExceptionDate).join(" · ")}
+                    {formatExceptionDate(request.date)}
                   </p>
                   <p className="text-xs font-medium text-[#219ebc]">
                     {request.reasonCategory}
                   </p>
                 </div>
-                <ExceptionStatusBadge status={request.status} />
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                  {request.isEmergency && <EmergencyBadge />}
+                  <ExceptionStatusBadge status={request.status} />
+                </div>
               </div>
 
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
@@ -112,6 +132,7 @@ export function MyExceptionRequests() {
       <RequestExceptionDialog
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
+        allowance={allowance}
         onSubmitted={fetchRequests}
       />
     </div>

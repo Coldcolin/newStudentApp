@@ -14,7 +14,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { ExceptionStatusBadge } from "./exception-status-badge";
+import {
+  ExceptionStatusBadge,
+  EmergencyBadge,
+} from "./exception-status-badge";
 import type { ApiError } from "@/lib/api/axios";
 import {
   getExceptionRequests,
@@ -130,7 +133,11 @@ export function ExceptionReviewPanel() {
             return (
               <li
                 key={request._id}
-                className="rounded-lg border border-border bg-card p-4"
+                className={`rounded-lg border bg-card p-4 ${
+                  request.isEmergency && request.status === "Pending"
+                    ? "border-[#ec1c24]/40 ring-1 ring-[#ec1c24]/20"
+                    : "border-border"
+                }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3">
@@ -150,18 +157,22 @@ export function ExceptionReviewPanel() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {/* Tutor-only: students never see their allowance. */}
+                  <div className="flex flex-wrap items-center justify-end gap-2">
                     <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                      {request.quotaUsed}/{request.quotaLimit} used
+                      {/* "3/3 used" beside a fourth request reads like a bug,
+                          so an emergency says what it actually is. */}
+                      {request.isEmergency
+                        ? "Allowance spent"
+                        : `${request.quotaUsed}/${request.quotaLimit} used`}
                     </span>
+                    {request.isEmergency && <EmergencyBadge />}
                     <ExceptionStatusBadge status={request.status} />
                   </div>
                 </div>
 
                 <div className="mt-4 space-y-2">
                   <p className="text-sm font-semibold text-foreground">
-                    {request.dates.map(formatExceptionDate).join(" · ")}
+                    {formatExceptionDate(request.date)}
                   </p>
                   <p className="text-xs font-medium text-[#219ebc]">
                     {request.reasonCategory}

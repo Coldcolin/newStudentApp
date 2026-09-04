@@ -3,21 +3,20 @@ import axiosInstance from "./axios";
 /**
  * Class-day exception requests.
  *
- * A student asks to be excused from one or more class days; every tutor is
- * notified, and a tutor approves or declines. An approved request marks those
- * days excused in attendance, so they are never scored as an absence.
+ * A student asks to be excused from one class day; every tutor is notified, and
+ * a tutor approves or declines. An approved request marks that day excused in
+ * attendance, so it is never scored as an absence.
  *
  * These endpoints live under the backend's own `/api` router, so the paths here
  * carry a literal `/api` segment — the same as `/api/assignments/*` in
  * `./assignments`. (`NEXT_PUBLIC_API_URL` is `/api` and `next.config.mjs`
  * rewrites `/api/:path*` to the backend root, so the prefix is consumed there.)
  *
- * There is a server-side cap on how many exceptions a student may hold, and it
- * is deliberately invisible to them: the backend never sends a count, a
- * remaining, or a distinguishable error when it is reached — a blocked student
- * just gets a generic "speak with your tutor" message through the normal error
- * path. Nothing in the student-facing types below should ever grow a quota
- * field.
+ * Each student gets an allowance of exception days per program, and it is shown
+ * to them — see `ExceptionAllowance`, returned alongside their own requests.
+ * Running out is not a dead end: `emergencyOnly` then goes true and they can
+ * file emergency requests instead, which sit outside the allowance and are
+ * still subject to a tutor's approval.
  */
 
 export const EXCEPTION_REASON_CATEGORIES = [
@@ -26,6 +25,7 @@ export const EXCEPTION_REASON_CATEGORIES = [
   "Work / Interview",
   "Travel",
   "Bereavement",
+  "Extra-curricular event",
   "Other",
 ] as const;
 
@@ -34,14 +34,22 @@ export type ExceptionReasonCategory =
 
 export type ExceptionStatus = "Pending" | "Approved" | "Declined";
 
-/** At most this many class days may be named in a single request. */
-export const MAX_EXCEPTION_DATES = 3;
+/** Where a student stands. Describes the student, not any one request. */
+export interface ExceptionAllowance {
+  used: number;
+  remaining: number;
+  limit: number;
+  /** True once the allowance is spent — new requests must be emergencies. */
+  emergencyOnly: boolean;
+}
 
-/** The shape students receive. Carries no quota information, by design. */
+/** The shape students receive. */
 export interface ClassExceptionRequest {
   _id: string;
-  /** Class days being missed, as "YYYY-MM-DD". */
-  dates: string[];
+  /** The single class day being missed, as "YYYY-MM-DD". */
+  date: string;
+  /** Filed after the allowance ran out; does not consume it. */
+  isEmergency: boolean;
   reasonCategory: ExceptionReasonCategory;
   reason: string;
   catchUpPlan?: string;
@@ -68,31 +76,38 @@ export interface ClassExceptionRequestForTutor extends ClassExceptionRequest {
 }
 
 export interface CreateExceptionRequestPayload {
-  dates: string[];
+  date: string;
   reasonCategory: ExceptionReasonCategory;
   reason: string;
   catchUpPlan?: string;
   impactAcknowledged?: boolean;
+  /** Set when the allowance is spent; the server rejects it otherwise. */
+  isEmergency?: boolean;
 }
 
 /**
  * Submit a request to be excused from class (students only).
  *
- * Rejections arrive as a normal API error — surface `error.message` as-is. Do
- * not special-case it: the message for a student who has used their allowance
- * is intentionally indistinguishable from any other refusal, and branching on
- * it here would leak the cap the backend works to hide.
+ * Rejections arrive as a normal API error — surface `error.message` as-is. The
+ * server's messages already explain what to do (use an emergency request, wait
+ * for the pending one to be reviewed, pick an eligible day), so there is
+ * nothing to rewrite on this side.
  */
 export async function createExceptionRequest(
   payload: CreateExceptionRequestPayload,
-): Promise<{ message: string; request: ClassExceptionRequest }> {
+): Promise<{
+  message: string;
+  request: ClassExceptionRequest;
+  allowance: ExceptionAllowance;
+}> {
   const response = await axiosInstance.post(`/api/class-exceptions`, payload);
   return response.data;
 }
 
-/** The signed-in student's own requests, newest first. */
+/** The signed-in student's own requests, newest first, plus their allowance. */
 export async function getMyExceptionRequests(): Promise<{
   requests: ClassExceptionRequest[];
+  allowance: ExceptionAllowance;
 }> {
   const response = await axiosInstance.get(`/api/class-exceptions/mine`);
   return response.data;
@@ -121,22 +136,30 @@ export async function reviewExceptionRequest(
 
 // ---------- Date helpers ----------
 
-/** Weekday numbers classes run on, mirroring CLASS_DAYS in the backend. */
-const CLASS_DAYS = [1, 3, 5]; // Mon, Wed, Fri
+/**
+ * Weekday numbers an exception may be requested for, mirroring EXCEPTION_DAYS
+ * in the backend controller: the three class days plus Saturday, which carries
+ * extra-curricular events.
+ *
+ * Note this is wider than the days classes actually run — Saturday is not a
+ * check-in day and is not scored.
+ */
+const EXCEPTION_DAYS = [1, 3, 5, 6]; // Mon, Wed, Fri, Sat
 
-export const CLASS_DAY_HINT =
-  "Classes run on Mondays, Wednesdays and Fridays.";
+export const EXCEPTION_DAY_HINT =
+  "You can request Mondays, Wednesdays, Fridays or Saturdays.";
 
 /**
- * Whether a "YYYY-MM-DD" string falls on a class day.
+ * Whether a "YYYY-MM-DD" string falls on a day an exception can be requested
+ * for.
  *
  * Parsed by parts rather than with `new Date(str)`, which reads the string as
  * UTC and can land on the wrong weekday west of Greenwich.
  */
-export function isClassDay(value: string): boolean {
+export function isExceptionDay(value: string): boolean {
   const [year, month, day] = value.split("-").map(Number);
   if (!year || !month || !day) return false;
-  return CLASS_DAYS.includes(new Date(year, month - 1, day).getDay());
+  return EXCEPTION_DAYS.includes(new Date(year, month - 1, day).getDay());
 }
 
 /** "2026-09-07" → "Mon, 7 Sep 2026". Same by-parts parsing as above. */

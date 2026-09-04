@@ -290,6 +290,48 @@ const formatSubmittedAt = (value: string) => {
 const deleteAssignmentWarning = (title: string) =>
   `Deleting "${title}" also permanently deletes every student submission, grade and piece of feedback for this task. This cannot be undone.`;
 
+function TaskRowActions({
+  assignment,
+  onEdit,
+  onViewSubmissions,
+  onDelete,
+}: {
+  assignment: Assignment;
+  onEdit: (assignment: Assignment) => void;
+  onViewSubmissions: (assignment: Assignment) => void;
+  onDelete: (assignment: Assignment) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          aria-label={`Actions for ${assignment.title}`}
+        >
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem onClick={() => onEdit(assignment)}>
+          <Pencil className="h-4 w-4" />
+          Edit task
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onViewSubmissions(assignment)}>
+          View submissions
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => onDelete(assignment)}
+          className="text-[#ec1c24] focus:text-[#ec1c24]"
+        >
+          Delete task
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 // ---------- Shared task form (Upload Task / Edit Task) ----------
 
 interface TaskFormData {
@@ -1237,15 +1279,15 @@ function StudentAssessmentView({
         <TabsList className="grid w-full grid-cols-3 max-w-md">
           <TabsTrigger value="tasks" className="flex items-center gap-2">
             <CheckSquare className="h-4 w-4" />
-            <span className="hidden sm:inline">Tasks</span>
+            <span>Tasks</span>
           </TabsTrigger>
           <TabsTrigger value="review" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
-            <span className="hidden sm:inline">Review</span>
+            <span>Review</span>
           </TabsTrigger>
           <TabsTrigger value="submissions" className="flex items-center gap-2">
             <Send className="h-4 w-4" />
-            <span className="hidden sm:inline">Submissions</span>
+            <span>Submissions</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1282,7 +1324,7 @@ function StudentAssessmentView({
                     <div
                       key={task._id}
                       onClick={() => handleTaskClick(task)}
-                      className={`flex flex-col sm:flex-row sm:items-start justify-between p-4 border border-border rounded-lg hover:bg-gray-50/50 transition-colors gap-3 ${
+                      className={`flex flex-col sm:flex-row sm:items-start justify-between overflow-hidden p-4 border border-border rounded-lg hover:bg-gray-50/50 transition-colors gap-3 ${
                         !isAdminViewing && task.status === "pending"
                           ? "cursor-pointer hover:border-[#ffb703]/50"
                           : ""
@@ -1290,7 +1332,7 @@ function StudentAssessmentView({
                     >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-medium text-foreground">
+                          <h4 className="break-words font-medium text-foreground">
                             {task.title}
                           </h4>
                           <Badge className={getStatusColor(task.status)}>
@@ -1312,11 +1354,12 @@ function StudentAssessmentView({
                             </Badge>
                           )}
                         </div>
-                        <div className="mt-1">
+                        <div className="mt-1 min-w-0 max-w-full">
                           <RichText
                             content={task.description}
                             format={task.descriptionFormat}
                             clamp={isExpanded || !isExpandable ? undefined : 2}
+                            className="max-w-full"
                           />
                         </div>
                         <div className="flex items-center gap-3 flex-wrap mt-2">
@@ -2969,12 +3012,12 @@ function AdminAssessmentView() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
               <span className="text-sm text-muted-foreground whitespace-nowrap">
                 {filteredAssignments.length}{" "}
                 {filteredAssignments.length === 1 ? "task" : "tasks"}
               </span>
-              <div className="relative w-full md:w-64">
+              <div className="relative w-full min-w-0 md:w-64">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search tasks"
@@ -3006,111 +3049,127 @@ function AdminAssessmentView() {
                   </p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-[#ffb703]/10 hover:bg-[#ffb703]/10">
-                        <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
-                          WEEK
-                        </TableHead>
-                        <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
-                          TITLE
-                        </TableHead>
-                        <TableHead className="hidden text-xs font-semibold text-foreground whitespace-nowrap md:table-cell">
-                          STACK
-                        </TableHead>
-                        <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
-                          DUE
-                        </TableHead>
-                        <TableHead className="hidden text-xs font-semibold text-foreground whitespace-nowrap md:table-cell">
-                          LATE?
-                        </TableHead>
-                        <TableHead className="w-[50px]"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredAssignments.map((assignment) => (
-                        <TableRow
-                          key={assignment._id}
-                          className="hover:bg-gray-50/50"
-                        >
-                          <TableCell className="py-3 text-sm text-muted-foreground whitespace-nowrap">
-                            Week {assignment.week}
-                          </TableCell>
-                          <TableCell className="min-w-0 py-3">
-                            <span className="block truncate text-sm font-medium">
-                              {assignment.title}
-                            </span>
-                            <RichText
-                              content={assignment.taskDescription}
-                              format={assignment.descriptionFormat}
-                              clamp={1}
-                              className="text-xs max-w-md"
+                <>
+                  <div className="space-y-3 px-4 py-4 md:hidden">
+                    {filteredAssignments.map((assignment) => (
+                      <div
+                        key={assignment._id}
+                        className="rounded-lg border border-border bg-muted/40 p-4"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <h4 className="min-w-0 flex-1 break-words text-sm font-medium text-foreground">
+                            {assignment.title}
+                          </h4>
+                          <div className="shrink-0">
+                            <TaskRowActions
+                              assignment={assignment}
+                              onEdit={handleOpenEditTask}
+                              onViewSubmissions={handleViewSubmissions}
+                              onDelete={setAssignmentToDelete}
                             />
-                          </TableCell>
-                          <TableCell className="hidden py-3 text-sm text-muted-foreground whitespace-nowrap md:table-cell">
-                            {assignment.stack}
-                          </TableCell>
-                          <TableCell className="py-3">
-                            <div className="flex items-center gap-2 whitespace-nowrap">
-                              <span className="text-sm text-muted-foreground">
-                                {assignment.formattedDueDate ||
-                                  formatCohortDueDate(assignment.dueDateTime)}
-                              </span>
-                              {isOverdue(assignment) && (
-                                <Badge className="bg-[#ec1c24]/10 text-[#ec1c24] hover:bg-[#ec1c24]/10">
-                                  Overdue
-                                </Badge>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="hidden py-3 text-sm text-muted-foreground md:table-cell">
-                            {assignment.allowLateSubmissions ? "Allowed" : "—"}
-                          </TableCell>
-                          <TableCell className="py-3">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent
-                                align="end"
-                                className="w-48"
-                              >
-                                <DropdownMenuItem
-                                  onClick={() => handleOpenEditTask(assignment)}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                  Edit task
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    handleViewSubmissions(assignment)
-                                  }
-                                >
-                                  View submissions
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    setAssignmentToDelete(assignment)
-                                  }
-                                  className="text-[#ec1c24] focus:text-[#ec1c24]"
-                                >
-                                  Delete task
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Badge variant="outline">Week {assignment.week}</Badge>
+                          <Badge variant="outline">{assignment.stack}</Badge>
+                          {isOverdue(assignment) && (
+                            <Badge className="bg-[#ec1c24]/10 text-[#ec1c24] hover:bg-[#ec1c24]/10">
+                              Overdue
+                            </Badge>
+                          )}
+                        </div>
+                        <RichText
+                          content={assignment.taskDescription}
+                          format={assignment.descriptionFormat}
+                          clamp={1}
+                          className="mt-2 max-w-full text-xs"
+                        />
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          Due:{" "}
+                          {assignment.formattedDueDate ||
+                            formatCohortDueDate(assignment.dueDateTime)}
+                          {assignment.allowLateSubmissions
+                            ? " · Late submissions allowed"
+                            : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="hidden overflow-x-auto md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-[#ffb703]/10 hover:bg-[#ffb703]/10">
+                          <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                            WEEK
+                          </TableHead>
+                          <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                            TITLE
+                          </TableHead>
+                          <TableHead className="hidden text-xs font-semibold text-foreground whitespace-nowrap md:table-cell">
+                            STACK
+                          </TableHead>
+                          <TableHead className="text-xs font-semibold text-foreground whitespace-nowrap">
+                            DUE
+                          </TableHead>
+                          <TableHead className="hidden text-xs font-semibold text-foreground whitespace-nowrap md:table-cell">
+                            LATE?
+                          </TableHead>
+                          <TableHead className="w-[50px]"></TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredAssignments.map((assignment) => (
+                          <TableRow
+                            key={assignment._id}
+                            className="hover:bg-gray-50/50"
+                          >
+                            <TableCell className="py-3 text-sm text-muted-foreground whitespace-nowrap">
+                              Week {assignment.week}
+                            </TableCell>
+                            <TableCell className="min-w-0 whitespace-normal py-3">
+                              <span className="block truncate text-sm font-medium">
+                                {assignment.title}
+                              </span>
+                              <RichText
+                                content={assignment.taskDescription}
+                                format={assignment.descriptionFormat}
+                                clamp={1}
+                                className="max-w-full text-xs"
+                              />
+                            </TableCell>
+                            <TableCell className="hidden py-3 text-sm text-muted-foreground whitespace-nowrap md:table-cell">
+                              {assignment.stack}
+                            </TableCell>
+                            <TableCell className="py-3">
+                              <div className="flex items-center gap-2 whitespace-nowrap">
+                                <span className="text-sm text-muted-foreground">
+                                  {assignment.formattedDueDate ||
+                                    formatCohortDueDate(assignment.dueDateTime)}
+                                </span>
+                                {isOverdue(assignment) && (
+                                  <Badge className="bg-[#ec1c24]/10 text-[#ec1c24] hover:bg-[#ec1c24]/10">
+                                    Overdue
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="hidden py-3 text-sm text-muted-foreground md:table-cell">
+                              {assignment.allowLateSubmissions ? "Allowed" : "—"}
+                            </TableCell>
+                            <TableCell className="py-3">
+                              <TaskRowActions
+                                assignment={assignment}
+                                onEdit={handleOpenEditTask}
+                                onViewSubmissions={handleViewSubmissions}
+                                onDelete={setAssignmentToDelete}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>

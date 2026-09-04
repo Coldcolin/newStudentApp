@@ -19,3 +19,18 @@ export function ExceptionStatusBadge({ status }: { status: ExceptionStatus }) {
     </span>
   );
 }
+
+/**
+ * Marks a request filed after the student's allowance ran out.
+ *
+ * Kept separate from the status pill rather than added to `ExceptionStatus`:
+ * emergency is orthogonal to Pending/Approved/Declined, and the backend has no
+ * such status.
+ */
+export function EmergencyBadge() {
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-full bg-[#ec1c24]/15 px-2.5 py-1 text-xs font-semibold text-[#ec1c24]">
+      Emergency
+    </span>
+  );
+}

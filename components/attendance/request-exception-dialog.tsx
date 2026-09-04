@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Plus, X } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,26 +15,28 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ExceptionAllowanceMeter } from "./exception-allowance-meter";
 import type { ApiError } from "@/lib/api/axios";
 import {
   createExceptionRequest,
-  isClassDay,
+  isExceptionDay,
   todayISO,
-  CLASS_DAY_HINT,
+  EXCEPTION_DAY_HINT,
   EXCEPTION_REASON_CATEGORIES,
-  MAX_EXCEPTION_DATES,
+  type ExceptionAllowance,
   type ExceptionReasonCategory,
 } from "@/lib/api/class-exceptions";
 
 interface RequestExceptionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Called after a request is successfully submitted, so the list can refresh. */
+  allowance: ExceptionAllowance | null;
+  /** Called after a request is submitted, so the list and counter can refresh. */
   onSubmitted: () => void;
 }
 
 const emptyForm = {
-  dates: [""] as string[],
+  date: "",
   reasonCategory: "" as ExceptionReasonCategory | "",
   reason: "",
   catchUpPlan: "",
@@ -44,33 +46,16 @@ const emptyForm = {
 export function RequestExceptionDialog({
   open,
   onOpenChange,
+  allowance,
   onSubmitted,
 }: RequestExceptionDialogProps) {
   const [form, setForm] = useState(emptyForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const today = todayISO();
 
-  const setDate = (index: number, value: string) => {
-    setForm((prev) => ({
-      ...prev,
-      dates: prev.dates.map((date, i) => (i === index ? value : date)),
-    }));
-  };
-
-  const addDate = () => {
-    setForm((prev) =>
-      prev.dates.length >= MAX_EXCEPTION_DATES
-        ? prev
-        : { ...prev, dates: [...prev.dates, ""] },
-    );
-  };
-
-  const removeDate = (index: number) => {
-    setForm((prev) => ({
-      ...prev,
-      dates: prev.dates.filter((_, i) => i !== index),
-    }));
-  };
+  // The allowance is spent, so anything filed now is an emergency.
+  const isEmergency = allowance?.emergencyOnly === true;
+  const dateInvalid = Boolean(form.date) && !isExceptionDay(form.date);
 
   const close = () => {
     onOpenChange(false);
@@ -78,20 +63,14 @@ export function RequestExceptionDialog({
   };
 
   const handleSubmit = async () => {
-    const dates = form.dates.map((date) => date.trim()).filter(Boolean);
-
-    if (dates.length === 0) {
-      toast.error("Please select at least one class day");
-      return;
-    }
-    if (new Set(dates).size !== dates.length) {
-      toast.error("You've selected the same date more than once");
+    if (!form.date) {
+      toast.error("Please pick the day you'll be missing");
       return;
     }
     // Checked here as well as on the server so the correction is immediate
     // rather than a round trip away.
-    if (dates.some((date) => !isClassDay(date))) {
-      toast.error(CLASS_DAY_HINT);
+    if (!isExceptionDay(form.date)) {
+      toast.error(EXCEPTION_DAY_HINT);
       return;
     }
     if (!form.reasonCategory) {
@@ -99,7 +78,11 @@ export function RequestExceptionDialog({
       return;
     }
     if (!form.reason.trim()) {
-      toast.error("Please tell your tutors why you'll be missing class");
+      toast.error(
+        isEmergency
+          ? "Please tell your tutors what the emergency is"
+          : "Please tell your tutors why you'll be missing class",
+      );
       return;
     }
     if (!form.impactAcknowledged) {
@@ -109,23 +92,31 @@ export function RequestExceptionDialog({
 
     setIsSubmitting(true);
     try {
-      await createExceptionRequest({
-        dates,
+      const result = await createExceptionRequest({
+        date: form.date,
         reasonCategory: form.reasonCategory,
         reason: form.reason.trim(),
         catchUpPlan: form.catchUpPlan.trim() || undefined,
         impactAcknowledged: form.impactAcknowledged,
+        isEmergency,
       });
 
-      toast.success("Request sent to your tutors");
+      if (isEmergency) {
+        toast.success("Emergency request sent to your tutors");
+      } else {
+        const left = result.allowance?.remaining ?? 0;
+        toast.success(
+          `Request sent. You have ${left} exception day${left === 1 ? "" : "s"} left.`,
+        );
+      }
+
       close();
       onSubmitted();
     } catch (error) {
       const apiError = error as ApiError;
       console.error("Failed to submit exception request:", error);
-      // Surfaced verbatim, with no branching on the text. The server sends a
-      // deliberately generic message when a student has used their allowance,
-      // and special-casing it here would give away the limit it hides.
+      // The server's refusals already say what to do next, so they go straight
+      // through without rewriting.
       toast.error(
         apiError.message || "Couldn't submit your request. Please try again.",
       );
@@ -145,67 +136,58 @@ export function RequestExceptionDialog({
     >
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[640px]">
         <DialogHeader>
-          <DialogTitle className="text-xl">Request a class exception</DialogTitle>
+          <DialogTitle className="text-xl">
+            {isEmergency
+              ? "Emergency exception request"
+              : "Request a class exception"}
+          </DialogTitle>
           <DialogDescription>
-            Let your tutors know ahead of time which class you&apos;ll be
-            missing and why.
+            {isEmergency
+              ? "Your tutors will review this as an emergency."
+              : "Let your tutors know ahead of time which day you'll be missing and why."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-2">
-          {/* Class days */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">
-              Which class day(s) will you miss?
-            </Label>
-            <div className="space-y-3">
-              {form.dates.map((date, index) => {
-                const invalid = Boolean(date) && !isClassDay(date);
-
-                return (
-                  <div key={index} className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="date"
-                        min={today}
-                        value={date}
-                        onChange={(e) => setDate(index, e.target.value)}
-                        className="h-12 flex-1"
-                        aria-invalid={invalid}
-                      />
-                      {form.dates.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeDate(index)}
-                          aria-label="Remove this date"
-                          className="h-12 w-12 shrink-0 text-muted-foreground hover:text-[#ec1c24]"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                    {invalid && (
-                      <p className="text-xs text-[#ec1c24]">{CLASS_DAY_HINT}</p>
-                    )}
-                  </div>
-                );
-              })}
+          {isEmergency ? (
+            <div className="flex gap-3 rounded-lg border border-[#ec1c24]/30 bg-[#ec1c24]/5 p-4">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[#ec1c24]" />
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-foreground">
+                  You&apos;ve used all {allowance?.limit} of your exception days
+                </p>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  You can still ask to be excused in a genuine emergency. Your
+                  tutors will decide, and you can only have one emergency
+                  request waiting at a time.
+                </p>
+              </div>
             </div>
+          ) : (
+            allowance && <ExceptionAllowanceMeter allowance={allowance} />
+          )}
 
-            {form.dates.length < MAX_EXCEPTION_DATES && (
-              <button
-                type="button"
-                onClick={addDate}
-                className="inline-flex items-center gap-1 text-sm font-medium text-[#219ebc] hover:underline"
-              >
-                <Plus className="h-4 w-4" />
-                Add another date
-              </button>
-            )}
-
-            <p className="text-xs text-muted-foreground">{CLASS_DAY_HINT}</p>
+          {/* Day */}
+          <div className="space-y-2">
+            <Label htmlFor="exceptionDate" className="text-sm font-medium">
+              Which day will you miss?
+            </Label>
+            <Input
+              id="exceptionDate"
+              type="date"
+              min={today}
+              value={form.date}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, date: e.target.value }))
+              }
+              className="h-12"
+              aria-invalid={dateInvalid}
+            />
+            <p
+              className={`text-xs ${dateInvalid ? "text-[#ec1c24]" : "text-muted-foreground"}`}
+            >
+              {EXCEPTION_DAY_HINT}
+            </p>
           </div>
 
           {/* Reason category */}
@@ -234,7 +216,9 @@ export function RequestExceptionDialog({
           {/* Details */}
           <div className="space-y-2">
             <Label htmlFor="exceptionReason" className="text-sm font-medium">
-              Tell your tutors more
+              {isEmergency
+                ? "What's the emergency?"
+                : "Tell your tutors more"}
             </Label>
             <Textarea
               id="exceptionReason"
@@ -242,7 +226,11 @@ export function RequestExceptionDialog({
               onChange={(e) =>
                 setForm((prev) => ({ ...prev, reason: e.target.value }))
               }
-              placeholder="A short explanation of why you'll be away"
+              placeholder={
+                isEmergency
+                  ? "Explain what's happened — this is reviewed by a person"
+                  : "A short explanation of why you'll be away"
+              }
               rows={4}
               maxLength={1000}
             />
@@ -315,13 +303,19 @@ export function RequestExceptionDialog({
           <Button
             onClick={handleSubmit}
             disabled={isSubmitting}
-            className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+            className={
+              isEmergency
+                ? "bg-[#ec1c24] text-white hover:bg-[#c81820]"
+                : "bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
+            }
           >
             {isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Sending...
               </>
+            ) : isEmergency ? (
+              "Send emergency request"
             ) : (
               "Send request"
             )}

@@ -11,8 +11,7 @@ import axiosInstance from "./axios";
 export type NotificationType =
   | "assignment_posted"
   | "exception_requested"
-  | "exception_reviewed"
-  | "exception_blocked";
+  | "exception_reviewed";
 
 export interface AppNotification {
   _id: string;
