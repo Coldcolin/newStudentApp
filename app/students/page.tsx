@@ -17,6 +17,7 @@ import Link from "next/link";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { useCurrentUser } from "@/lib/store/hooks";
 import { useProgramSettings } from "@/components/providers/program-settings-provider";
+import { normalizeStack } from "@/lib/utils";
 import axiosInstance, { api } from "@/lib/api/axios";
 
 // Types for different views
@@ -111,10 +112,6 @@ export default function StudentsPage() {
       [currentView]: query,
     }));
   };
-
-  // Filter students/alumni by active stack tab and search query
-  const normalizeStack = (stack: string) =>
-    stack.toLowerCase().replace(/[-\s]/g, "");
 
   const currentData = currentView === "alumni" ? alumniData : studentData;
   const filteredStudentData = currentData.filter((student) => {

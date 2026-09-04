@@ -55,6 +55,8 @@ import { toast } from "sonner";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { MyExceptionRequests } from "@/components/attendance/my-exception-requests";
 import { ExceptionReviewPanel } from "@/components/attendance/exception-review-panel";
+import { AttendanceRecordsPanel } from "@/components/attendance/attendance-records-panel";
+import { normalizeStack } from "@/lib/utils";
 
 type CheckInStatus = "idle" | "camera" | "processing" | "success" | "error";
 type LocationStatus = "idle" | "requesting" | "granted" | "denied";
@@ -127,9 +129,15 @@ interface StudentsApiResponse {
 
 const tabs = ["Front-End", "Back-End", "Product Design"];
 
-// The two things a tutor does on this page: look at the roster, or work the
-// class-exception review queue.
-const adminSections = ["students", "exceptions"] as const;
+// What a tutor does on this page: look at the roster, read the cohort's
+// attendance, or work the class-exception review queue.
+const adminSections = ["students", "records", "exceptions"] as const;
+
+const SECTION_LABELS: Record<(typeof adminSections)[number], string> = {
+  students: "Students",
+  records: "Attendance Records",
+  exceptions: "Class Exceptions",
+};
 
 /**
  * Resolves once the video has actually presented a decoded frame.
@@ -427,10 +435,6 @@ const mapToStudentData = (student: StudentRecord): StudentData => ({
   ],
 });
 
-// Normalize stack name for comparison
-const normalizeStack = (stack: string) =>
-  stack.toLowerCase().replace(/[-\s]/g, "");
-
 // Admin Attendance View Component
 function AdminAttendanceView() {
   const router = useRouter();
@@ -503,13 +507,15 @@ function AdminAttendanceView() {
                 : "bg-card text-foreground hover:bg-muted border border-border"
             }`}
           >
-            {section === "students" ? "Students" : "Class Exceptions"}
+            {SECTION_LABELS[section]}
           </button>
         ))}
       </div>
 
       {activeSection === "exceptions" ? (
         <ExceptionReviewPanel />
+      ) : activeSection === "records" ? (
+        <AttendanceRecordsPanel />
       ) : (
         <>
       {/* Search Input */}

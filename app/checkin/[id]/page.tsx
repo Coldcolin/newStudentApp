@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -24,29 +23,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ArrowLeft, Check, FileCheck, Loader2 } from "lucide-react";
 import axiosInstance from "@/lib/api/axios";
-
-interface AttendanceImage {
-  url: string;
-  public_id: string;
-}
-
-interface AttendanceRecord {
-  _id: string;
-  date: string;
-  time: string;
-  location: string;
-  punctualityScore: number;
-  image?: AttendanceImage;
-  userId: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface StudentAttendanceApiResponse {
-  message: string;
-  averagePunctualityScore: number;
-  data: AttendanceRecord[];
-}
+import { StudentAttendanceCard } from "@/components/attendance/student-attendance-card";
+import {
+  getStudentAttendance,
+  type AttendanceRecord,
+} from "@/lib/api/attendance";
 
 interface StudentRecord {
   _id: string;
@@ -70,86 +51,6 @@ interface StudentData {
   stack: string;
   attendance: AttendanceRecord[];
   avgPunctuality: string;
-}
-
-// Student Attendance Card Component
-function StudentAttendanceCard({ record }: { record: AttendanceRecord }) {
-  const [isImageOpen, setIsImageOpen] = useState(false);
-  const hasImage = Boolean(record.image?.url);
-
-  const formattedDate = new Date(record.date).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-  const formattedTime = new Date(
-    `2000-01-01T${record.time}`,
-  ).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-
-  const handleKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      setIsImageOpen(true);
-    }
-  };
-
-  return (
-    <>
-      <Card
-        className={`border border-border shadow-sm transition-shadow ${
-          hasImage ? "cursor-pointer hover:shadow-md" : ""
-        }`}
-        onClick={hasImage ? () => setIsImageOpen(true) : undefined}
-        onKeyDown={hasImage ? handleKeyDown : undefined}
-        role={hasImage ? "button" : undefined}
-        tabIndex={hasImage ? 0 : undefined}
-      >
-        <CardContent className="p-4 flex flex-col items-center text-center">
-          {record.image?.url && (
-            <div className="mb-3 w-full">
-              <img
-                src={record.image.url}
-                alt="Check-in"
-                className="w-full h-32 object-cover rounded-lg"
-              />
-            </div>
-          )}
-          <p className="text-sm text-muted-foreground">{formattedDate}</p>
-          <p className="text-sm text-muted-foreground">
-            Check-in Time:{" "}
-            <span className="font-medium text-foreground">{formattedTime}</span>
-          </p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Score:{" "}
-            <span className="font-medium text-foreground">
-              {record.punctualityScore * 5}%
-            </span>
-          </p>
-        </CardContent>
-      </Card>
-
-      {hasImage && (
-        <Dialog open={isImageOpen} onOpenChange={setIsImageOpen}>
-          <DialogContent className="sm:max-w-3xl p-4">
-            <DialogTitle>Check-in Photo</DialogTitle>
-            <DialogDescription>
-              {formattedDate} · {formattedTime} · Score:{" "}
-              {record.punctualityScore * 5}%
-            </DialogDescription>
-            <img
-              src={record.image!.url}
-              alt="Check-in photo"
-              className="w-full max-h-[70vh] object-contain rounded-lg"
-            />
-          </DialogContent>
-        </Dialog>
-      )}
-    </>
-  );
 }
 
 export default function StudentCheckInDetailPage({
@@ -183,14 +84,10 @@ export default function StudentCheckInDetailPage({
       }
 
       // Fetch attendance data
-      const attendanceResponse =
-        await axiosInstance.get<StudentAttendanceApiResponse>(
-          `/api/v1/studentAttendance/${id}`,
-        );
+      const attendanceResponse = await getStudentAttendance(id);
 
-      const avgPunctuality =
-        attendanceResponse.data.averagePunctualityScore || 0;
-      const attendanceRecords = attendanceResponse.data.data || [];
+      const avgPunctuality = attendanceResponse.averagePunctualityScore || 0;
+      const attendanceRecords = attendanceResponse.data || [];
 
       setStudent({
         id: studentRecord._id,
