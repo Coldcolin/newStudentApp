@@ -53,8 +53,6 @@ interface RankingRow {
   classAssessment: number;
 }
 
-
-
 const getRankIcon = (rank: number) => {
   switch (rank) {
     case 1:
@@ -106,10 +104,18 @@ export default function RankingsPage() {
     const fetchRankings = async () => {
       setIsLoading(true);
       try {
-        const params = activeTab === "All" ? undefined : { stack: normalizeStack(activeTab) };
-        const response = await axiosInstance.get<RankingsResponse>("/users/rankings", { params });
+        const params =
+          activeTab === "All"
+            ? undefined
+            : { stack: normalizeStack(activeTab) };
+        const response = await axiosInstance.get<RankingsResponse>(
+          "/users/rankings",
+          { params },
+        );
         const items = response.data.rankings || [];
-        const sorted = [...items].sort((a, b) => b.overallScore - a.overallScore);
+        const sorted = [...items].sort(
+          (a, b) => b.overallScore - a.overallScore,
+        );
         setRankingsData(
           sorted.map((item, index) => ({
             rank: index + 1,
@@ -121,7 +127,7 @@ export default function RankingsPage() {
             personalDefence: item.personalDefence,
             classParticipation: item.classParticipation,
             classAssessment: item.classAssessment,
-          }))
+          })),
         );
       } catch (error) {
         const apiError = error as ApiError;
@@ -139,7 +145,8 @@ export default function RankingsPage() {
     const fetchTopPerformers = async () => {
       setIsLoadingTopPerformers(true);
       try {
-        const stack = activeTab === "All" ? undefined : normalizeStack(activeTab);
+        const stack =
+          activeTab === "All" ? undefined : normalizeStack(activeTab);
         const data = await getTopPerformersByWeek(selectedWeek, stack);
         setTopPerformers(data.topPerformers || []);
       } catch (error) {
@@ -240,7 +247,7 @@ export default function RankingsPage() {
           </div>
 
           {/* Week Selector — scopes the Top Performers card below */}
-          <div className="flex w-full items-center gap-2 lg:w-auto">
+          {/* <div className="flex w-full items-center gap-2 lg:w-auto">
             <Label
               htmlFor="week-select"
               className="text-sm font-medium whitespace-nowrap"
@@ -259,7 +266,7 @@ export default function RankingsPage() {
                 </option>
               ))}
             </select>
-          </div>
+          </div> */}
         </div>
 
         {/* Full Rankings Table */}
@@ -294,7 +301,10 @@ export default function RankingsPage() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <Avatar className="h-9 w-9 shrink-0">
-                              <AvatarImage src="/placeholder.svg" alt={student.name} />
+                              <AvatarImage
+                                src="/placeholder.svg"
+                                alt={student.name}
+                              />
                               <AvatarFallback className="bg-[#ffb703] text-xs text-[#08022b]">
                                 {student.name
                                   .split(" ")
@@ -318,32 +328,50 @@ export default function RankingsPage() {
                           <p className="text-sm font-bold text-[#34a853]">
                             {student.overallScore.toFixed(2)}%
                           </p>
-                          <p className="text-xs text-muted-foreground">Overall</p>
+                          <p className="text-xs text-muted-foreground">
+                            Overall
+                          </p>
                         </div>
                       </div>
                       <div className="mt-3 grid grid-cols-2 gap-2">
                         <div className="rounded-md bg-background/70 px-3 py-2">
-                          <p className="text-xs text-muted-foreground">Punctuality</p>
+                          <p className="text-xs text-muted-foreground">
+                            Punctuality
+                          </p>
                           <p className="text-sm font-medium">
                             {student.punctuality.toFixed(2)}%
                           </p>
                         </div>
                         <div className="rounded-md bg-background/70 px-3 py-2">
-                          <p className="text-xs text-muted-foreground">Assignments</p>
+                          <p className="text-xs text-muted-foreground">
+                            Assignments
+                          </p>
                           <p className="text-sm font-medium">
                             {student.assignments.toFixed(2)}%
                           </p>
                         </div>
                         <div className="rounded-md bg-background/70 px-3 py-2">
-                          <p className="text-xs text-muted-foreground">Participation</p>
+                          <p className="text-xs text-muted-foreground">
+                            Participation
+                          </p>
                           <p className="text-sm font-medium">
                             {student.classParticipation.toFixed(2)}%
                           </p>
                         </div>
                         <div className="rounded-md bg-background/70 px-3 py-2">
-                          <p className="text-xs text-muted-foreground">Assessment</p>
+                          <p className="text-xs text-muted-foreground">
+                            Assessment
+                          </p>
                           <p className="text-sm font-medium">
                             {student.classAssessment.toFixed(2)}%
+                          </p>
+                        </div>
+                        <div className="rounded-md bg-background/70 px-3 py-2">
+                          <p className="text-xs text-muted-foreground">
+                            Personal Defence
+                          </p>
+                          <p className="text-sm font-medium">
+                            {student.personalDefence.toFixed(2)}%
                           </p>
                         </div>
                       </div>
@@ -379,6 +407,9 @@ export default function RankingsPage() {
                         <TableHead className="text-xs font-semibold text-right">
                           Assessment
                         </TableHead>
+                        <TableHead className="text-xs font-semibold text-right">
+                          Personal Defence
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -395,7 +426,10 @@ export default function RankingsPage() {
                           <TableCell className="py-4">
                             <div className="flex items-center gap-3">
                               <Avatar className="h-10 w-10">
-                                <AvatarImage src="/placeholder.svg" alt={student.name} />
+                                <AvatarImage
+                                  src="/placeholder.svg"
+                                  alt={student.name}
+                                />
                                 <AvatarFallback className="bg-[#ffb703] text-xs text-[#08022b]">
                                   {student.name
                                     .split(" ")
@@ -431,6 +465,9 @@ export default function RankingsPage() {
                           </TableCell>
                           <TableCell className="py-4 text-right text-sm">
                             {student.classAssessment.toFixed(2)}%
+                          </TableCell>
+                          <TableCell className="py-4 text-right text-sm">
+                            {student.personalDefence.toFixed(2)}%
                           </TableCell>
                         </TableRow>
                       ))}
@@ -479,7 +516,9 @@ export default function RankingsPage() {
                         <div className="mt-2 flex items-center gap-2">
                           <Avatar className="h-8 w-8 shrink-0">
                             <AvatarImage
-                              src={performer.student.image || "/placeholder.svg"}
+                              src={
+                                performer.student.image || "/placeholder.svg"
+                              }
                               alt={performer.student.name}
                             />
                             <AvatarFallback className="bg-[#ffb703] text-xs text-[#08022b]">
