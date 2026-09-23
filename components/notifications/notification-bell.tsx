@@ -9,7 +9,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useIsAuthenticated } from "@/lib/store/hooks";
 import {
   getNotifications,
@@ -162,7 +161,11 @@ export function NotificationBell() {
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent align="end" className="w-[22rem] p-0">
+      <PopoverContent
+        align="end"
+        collisionPadding={12}
+        className="w-[min(22rem,calc(100vw-2rem))] overflow-hidden p-0"
+      >
         <div className="flex items-center justify-between border-b px-4 py-3">
           <p className="text-sm font-semibold text-foreground">Notifications</p>
           {unreadCount > 0 && (
@@ -189,7 +192,7 @@ export function NotificationBell() {
             </p>
           </div>
         ) : (
-          <ScrollArea className="max-h-96">
+          <div className="max-h-96 overflow-y-auto">
             <ul className="divide-y">
               {notifications.map((notification) => (
                 <li key={notification._id}>
@@ -214,7 +217,7 @@ export function NotificationBell() {
                       >
                         {notification.title}
                       </span>
-                      <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+                      <span className="mt-0.5 line-clamp-3 block break-words text-xs leading-relaxed text-muted-foreground">
                         {notification.body}
                       </span>
                       <span className="mt-1 block text-[11px] text-muted-foreground/70">
@@ -225,7 +228,7 @@ export function NotificationBell() {
                 </li>
               ))}
             </ul>
-          </ScrollArea>
+          </div>
         )}
       </PopoverContent>
     </Popover>

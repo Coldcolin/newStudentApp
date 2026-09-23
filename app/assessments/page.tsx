@@ -971,6 +971,7 @@ function StudentAssessmentView({
       setIsLoadingScores(true);
       try {
         const data = await getStudentAssignmentScores(targetStudentId);
+        console.log("[DEBUG] fetchScores - data:", data);
         if (cancelled) return;
         setAssignmentScores(data.weeks ?? []);
       } catch (error) {
