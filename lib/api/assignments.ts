@@ -1,4 +1,10 @@
+import type {
+  CriterionScore,
+  GradingCriterion,
+} from "@/lib/grading-criteria";
 import axiosInstance from "./axios";
+
+export type { CriterionScore, GradingCriterion };
 
 // Types
 export type AssignmentStack =
@@ -22,6 +28,10 @@ export interface Assignment {
   formattedDueDate: string;
   createdAt?: string;
   updatedAt?: string;
+  /** Empty or omitted when the task is graded with one score out of 20. */
+  criteria?: GradingCriterion[];
+  /** True once any submission for this task has been graded. */
+  criteriaLocked?: boolean;
 }
 
 export interface Submission {
@@ -32,6 +42,8 @@ export interface Submission {
   submittedAt: string;
   isLate: boolean;
   grade: number | null;
+  feedback?: string | null;
+  criterionScores?: CriterionScore[];
 }
 
 export interface StudentSubmission {
@@ -41,6 +53,7 @@ export interface StudentSubmission {
     title: string;
     week: number;
     stack: string;
+    criteria?: GradingCriterion[];
   };
   student: string;
   status: "Graded" | "Pending";
@@ -50,6 +63,7 @@ export interface StudentSubmission {
   grade: number | null;
   /** The tutor's comment, stored alongside the grade. */
   feedback?: string | null;
+  criterionScores?: CriterionScore[];
 }
 
 /**
@@ -64,6 +78,8 @@ export interface GradingSubmission {
     week: number;
     stack: string;
     taskDescription?: string;
+    criteria?: GradingCriterion[];
+    criteriaLocked?: boolean;
   };
   student: {
     _id: string;
@@ -77,6 +93,7 @@ export interface GradingSubmission {
   submittedAt: string;
   isLate: boolean;
   grade: number | null;
+  criterionScores?: CriterionScore[];
 }
 
 export interface GradingStudent {
@@ -92,11 +109,15 @@ export interface GradingStudent {
       _id: string;
       title: string;
       stack: string;
+      criteria?: GradingCriterion[];
+      criteriaLocked?: boolean;
     };
     submissionLink: string;
     submittedAt: string;
     isLate: boolean;
     grade: number | null;
+    feedback?: string | null;
+    criterionScores?: CriterionScore[];
   }[];
 }
 
@@ -109,6 +130,8 @@ export interface CreateAssignmentRequest {
   dueDate: string;
   dueTime: string;
   allowLateSubmissions?: boolean;
+  /** Omit, or send [], to keep a single score out of 20. */
+  criteria?: { label: string; maxPoints: number }[];
 }
 
 export interface CreateAssignmentResponse {
@@ -126,12 +149,16 @@ export interface SubmitAssignmentResponse {
 }
 
 export interface GradeSubmissionRequest {
-  grade: number;
+  grade?: number;
+  feedback?: string;
+  criterionScores?: { criterion: string; score: number }[];
 }
 
 export interface GradeSubmissionResponse {
   message: string;
   grade: number;
+  feedback?: string;
+  criterionScores?: CriterionScore[];
 }
 
 export interface AddStudentRatingRequest {
@@ -172,6 +199,11 @@ export interface PerformanceReviewRating {
   title?: string;
   assessmentTitle?: string;
   status?: "graded" | "pending" | "late";
+  /** Assignment mark out of 20. Weekly rating rows keep using the category total. */
+  score?: number | null;
+  criteria?: GradingCriterion[];
+  criterionScores?: CriterionScore[];
+  feedback?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -325,18 +357,17 @@ export async function getSubmissionById(
 // Grading Management APIs
 
 /**
- * Grade a submission (Admin/Tutor only). `grade` is on the stored 0-20 scale.
- * `feedback` is omitted from the payload when undefined, so a grade-only save
- * leaves any existing comment untouched.
+ * Grade a submission (Admin/Tutor only). A rubric sends `criterionScores` and
+ * the server sets `grade` to their sum. A task with no rubric sends `grade`
+ * from 0 to 20. Omit `feedback` to leave an existing remark unchanged.
  */
 export async function gradeSubmission(
   submissionId: string,
-  grade: number,
-  feedback?: string,
+  data: GradeSubmissionRequest,
 ): Promise<GradeSubmissionResponse> {
   const response = await axiosInstance.patch(
     `/api/grading/submission/${submissionId}`,
-    { grade, ...(feedback !== undefined && { feedback }) },
+    data,
   );
   return response.data;
 }
@@ -438,6 +469,9 @@ export interface AssignmentScoreItem {
   /** The recorded grade out of 20, or null when not submitted / not yet graded. */
   grade: number | null;
   status: "Graded" | "Pending" | "Not Submitted";
+  criteria?: GradingCriterion[];
+  criterionScores?: CriterionScore[];
+  feedback?: string | null;
 }
 
 /**

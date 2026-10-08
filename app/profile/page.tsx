@@ -17,10 +17,28 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useCurrentUser, useAppDispatch } from "@/lib/store/hooks";
 import { updateUser } from "@/lib/store/slices/authSlice";
 import { toast } from "sonner";
 import axiosInstance from "@/lib/api/axios";
+
+interface GradingHistoryWeek {
+  week: number;
+  punctuality: number;
+  Assignments: number;
+  personalDefense: number;
+  classParticipation: number;
+  classAssessment: number;
+  total: number;
+}
 
 interface DashboardData {
   student: {
@@ -29,14 +47,15 @@ interface DashboardData {
     image: string;
     email: string;
     stack: string;
-    bio: string;
-    phone: string;
+    bio?: string;
+    phone?: string;
   };
   stats: {
     avgScore: number;
     completed: number;
     pending: number;
   };
+  gradingHistory?: GradingHistoryWeek[];
 }
 
 export default function ProfilePage() {
@@ -47,6 +66,8 @@ export default function ProfilePage() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(
     null,
   );
+  const [ratings, setRatings] = useState<GradingHistoryWeek[]>([]);
+  const [ratingsLoading, setRatingsLoading] = useState(false);
   const [formData, setFormData] = useState({
     fullName: user?.fullName || "",
     email: user?.email || "",
@@ -75,6 +96,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     const fetchDashboardData = async () => {
+      setRatingsLoading(true);
       try {
         const [dashboardResponse, userResponse] = await Promise.all([
           axiosInstance.get("/users/dashboard"),
@@ -85,6 +107,14 @@ export default function ProfilePage() {
 
         console.log("Dashboard API Response:", dashboardResponse.data);
         setDashboardData(dashboardResponse.data);
+
+        const history = Array.isArray(dashboardResponse.data?.gradingHistory)
+          ? [...dashboardResponse.data.gradingHistory].sort(
+              (a: GradingHistoryWeek, b: GradingHistoryWeek) =>
+                a.week - b.week,
+            )
+          : [];
+        setRatings(history);
 
         if (userResponse?.data) {
           const userData = userResponse.data?.data || userResponse.data;
@@ -108,6 +138,8 @@ export default function ProfilePage() {
         }
       } catch (error) {
         console.error("Failed to fetch profile data:", error);
+      } finally {
+        setRatingsLoading(false);
       }
     };
 
@@ -211,11 +243,12 @@ export default function ProfilePage() {
     setImagePreview(URL.createObjectURL(file));
   };
 
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return "text-[#34a853]";
-    if (score >= 60) return "text-[#ffb703]";
-    return "text-[#ec1c24]";
-  };
+  const getTotalColor = (total: number) =>
+    total >= 18
+      ? "text-[#34a853]"
+      : total >= 15
+        ? "text-[#ffb703]"
+        : "text-[#ec1c24]";
 
   return (
     <DashboardLayout title="My Profile">
@@ -223,7 +256,7 @@ export default function ProfilePage() {
         <Tabs defaultValue="profile" className="space-y-6">
           <TabsList>
             <TabsTrigger value="profile">Profile</TabsTrigger>
-            {/* <TabsTrigger value="grades">Grading History</TabsTrigger> */}
+            <TabsTrigger value="grades">Grading History</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
@@ -418,60 +451,125 @@ export default function ProfilePage() {
             </div>
           </TabsContent>
 
-          {/* <TabsContent value="grades">
+          <TabsContent value="grades">
             <Card className="border-none shadow-sm overflow-hidden">
-              <CardHeader>
+              <CardHeader className="px-4 md:px-6">
                 <CardTitle>Grading History</CardTitle>
               </CardHeader>
-              <CardContent className="p-0 md:p-6">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="whitespace-nowrap">
-                          Assessment
-                        </TableHead>
-                        <TableHead className="whitespace-nowrap">
-                          Date
-                        </TableHead>
-                        <TableHead className="whitespace-nowrap">
-                          Score
-                        </TableHead>
-                        <TableHead className="whitespace-nowrap">
-                          Percentage
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {gradingHistory.map((grade) => (
-                        <TableRow key={grade.id}>
-                          <TableCell className="font-medium whitespace-nowrap">
-                            {grade.assessment}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground whitespace-nowrap">
-                            {new Date(grade.date).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell className="whitespace-nowrap">
-                            {grade.score}/{grade.maxScore}
-                          </TableCell>
-                          <TableCell>
-                            <span
-                              className={`font-semibold ${getScoreColor(
-                                (grade.score / grade.maxScore) * 100,
-                              )}`}
+              <CardContent className="p-0">
+                {ratingsLoading ? (
+                  <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Loading ratings...
+                  </p>
+                ) : ratings.length === 0 ? (
+                  <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    No ratings available
+                  </p>
+                ) : (
+                  <>
+                    <div className="space-y-3 px-4 pb-4 md:hidden">
+                      {ratings.map((item) => (
+                        <div
+                          key={item.week}
+                          className="w-full rounded-lg border border-border bg-muted/40 p-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="text-sm font-semibold text-foreground">
+                              Week {item.week}
+                            </p>
+                            <p
+                              className={`shrink-0 text-sm font-bold ${getTotalColor(item.total)}`}
                             >
-                              {Math.round((grade.score / grade.maxScore) * 100)}
-                              %
-                            </span>
-                          </TableCell>
-                        </TableRow>
+                              {item.total}
+                            </p>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <div className="rounded-md bg-background/70 px-3 py-2">
+                              <p className="text-xs text-muted-foreground">
+                                Punctuality
+                              </p>
+                              <p className="text-sm font-medium">
+                                {item.punctuality ?? "N/A"}
+                              </p>
+                            </div>
+                            <div className="rounded-md bg-background/70 px-3 py-2">
+                              <p className="text-xs text-muted-foreground">
+                                Assignments
+                              </p>
+                              <p className="text-sm font-medium">
+                                {item.Assignments ?? "N/A"}
+                              </p>
+                            </div>
+                            <div className="rounded-md bg-background/70 px-3 py-2">
+                              <p className="text-xs text-muted-foreground">
+                                Defense
+                              </p>
+                              <p className="text-sm font-medium">
+                                {item.personalDefense ?? "N/A"}
+                              </p>
+                            </div>
+                            <div className="rounded-md bg-background/70 px-3 py-2">
+                              <p className="text-xs text-muted-foreground">
+                                Participation
+                              </p>
+                              <p className="text-sm font-medium">
+                                {item.classParticipation ?? "N/A"}
+                              </p>
+                            </div>
+                            <div className="rounded-md bg-background/70 px-3 py-2">
+                              <p className="text-xs text-muted-foreground">
+                                Assessment
+                              </p>
+                              <p className="text-sm font-medium">
+                                {item.classAssessment ?? "N/A"}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
                       ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                    </div>
+
+                    <div className="hidden overflow-x-auto px-2 md:block">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Week</TableHead>
+                            <TableHead>Punctuality</TableHead>
+                            <TableHead>Assignments</TableHead>
+                            <TableHead>Defense</TableHead>
+                            <TableHead>Participation</TableHead>
+                            <TableHead>Assessment</TableHead>
+                            <TableHead>Total</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {ratings.map((item) => (
+                            <TableRow key={item.week}>
+                              <TableCell className="font-medium">
+                                Week {item.week}
+                              </TableCell>
+                              <TableCell>{item.punctuality}</TableCell>
+                              <TableCell>{item.Assignments}</TableCell>
+                              <TableCell>{item.personalDefense}</TableCell>
+                              <TableCell>{item.classParticipation}</TableCell>
+                              <TableCell>{item.classAssessment}</TableCell>
+                              <TableCell>
+                                <span
+                                  className={`font-semibold ${getTotalColor(item.total)}`}
+                                >
+                                  {item.total}
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
-          </TabsContent> */}
+          </TabsContent>
 
           <TabsContent value="settings">
             <Card className="border-none shadow-sm">

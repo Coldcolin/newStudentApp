@@ -97,6 +97,23 @@ import {
 } from "@/lib/api/assignments";
 import { buildWeekOptions } from "@/lib/api/settings";
 import {
+  criteriaCreatePayload,
+  criteriaDraftError,
+  criteriaUpdatePayload,
+  formatPoints,
+  gradeRequest,
+  runningTotal,
+  scoreByCriterionId,
+  type GradeBody,
+  type GradingCriterion,
+  type CriterionScore,
+} from "@/lib/grading-criteria";
+import {
+  CriteriaEditor,
+  CriterionBreakdown,
+  type CriterionFormRow,
+} from "@/components/assessments/grading-criteria-fields";
+import {
   SOTW_STACK_LABELS,
   SotwStack,
   selectStudentOfTheWeek,
@@ -248,6 +265,8 @@ interface Task {
   status: "completed" | "pending" | "in-progress";
   score?: number;
   assignment?: Assignment;
+  feedback?: string | null;
+  criterionScores?: CriterionScore[];
 }
 
 interface Submission {
@@ -259,6 +278,8 @@ interface Submission {
   /** The tutor's comment, edited in the grading modal and shown on the card. */
   feedback?: string;
   submissionLink?: string;
+  criteria?: GradingCriterion[];
+  criterionScores?: CriterionScore[];
 }
 
 
@@ -342,6 +363,7 @@ interface TaskFormData {
   deadline: string;
   deadlineTime: string;
   allowLateSubmission: boolean;
+  criteria: CriterionFormRow[];
 }
 
 const emptyTaskForm: TaskFormData = {
@@ -352,6 +374,7 @@ const emptyTaskForm: TaskFormData = {
   deadline: "",
   deadlineTime: "23:59",
   allowLateSubmission: false,
+  criteria: [],
 };
 
 const assignmentTypes = ["general", "frontend", "backend", "product design"];
@@ -392,7 +415,10 @@ const initialsFromName = (name?: string) =>
     .map((n) => n[0])
     .join("") ?? "";
 
-function gradingToSubmission(submission: GradingSubmission): Submission {
+function gradingToSubmission(
+  submission: GradingSubmission,
+  fallbackCriteria?: GradingCriterion[],
+): Submission {
   return {
     _id: submission._id,
     title: submission.assignment?.title ?? "Unknown Assignment",
@@ -401,6 +427,8 @@ function gradingToSubmission(submission: GradingSubmission): Submission {
     score: submission.grade ?? undefined,
     feedback: submission.feedback,
     submissionLink: submission.submissionLink,
+    criteria: submission.assignment?.criteria ?? fallbackCriteria ?? [],
+    criterionScores: submission.criterionScores,
   };
 }
 
@@ -430,11 +458,43 @@ function GradeSubmissionDialog({
   commentsInput: string;
   onScoreInputChange: (value: string) => void;
   onCommentsInputChange: (value: string) => void;
-  onSave: () => void;
+  onSave: (body: GradeBody) => void;
   onCancel: () => void;
   isSaving: boolean;
   stacked?: boolean;
 }) {
+  const [criterionInputs, setCriterionInputs] = useState<Record<string, string>>(
+    {},
+  );
+  const [inputsReady, setInputsReady] = useState(false);
+  const criteria = submission?.criteria ?? [];
+  const hasRubric = criteria.length > 0;
+  const submissionId = submission?._id;
+  const criteriaKey = criteria.map((criterion) => criterion._id).join(",");
+  const scoresKey = (submission?.criterionScores ?? [])
+    .map((score) => `${score.criterion}:${score.score}`)
+    .join(",");
+
+  useEffect(() => {
+    if (!open || !submission) {
+      setInputsReady(false);
+      return;
+    }
+    const inputs: Record<string, string> = {};
+    for (const criterion of submission.criteria ?? []) {
+      const score = scoreByCriterionId(
+        submission.criterionScores,
+        criterion._id,
+      );
+      inputs[criterion._id] = score === undefined ? "" : String(score);
+    }
+    setCriterionInputs(inputs);
+    setInputsReady(true);
+    // The submission object is rebuilt by the parent on each keystroke. Re-seed
+    // only when the dialog opens onto a different submission or saved marks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, submissionId, criteriaKey, scoresKey]);
+
   useEffect(() => {
     if (open || !stacked) return;
     // Radix stacked dialogs can leave pointer-events: none on body after the
@@ -445,10 +505,31 @@ function GradeSubmissionDialog({
     return () => cancelAnimationFrame(frame);
   }, [open, stacked]);
 
+  const gradeBody = gradeRequest({
+    criteria,
+    grade: scoreInput,
+    criterionInputs,
+    feedback: commentsInput,
+    initialFeedback: submission?.feedback ?? "",
+  });
+  const gradeError =
+    hasRubric && !inputsReady
+      ? null
+      : "error" in gradeBody
+        ? gradeBody.error
+        : null;
+  const showGradeError =
+    gradeError !== null &&
+    (hasRubric
+      ? criteria.some(
+          (criterion) => (criterionInputs[criterion._id] ?? "").trim() !== "",
+        )
+      : scoreInput.trim() !== "");
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="sm:max-w-[500px]"
+        className="max-h-[90vh] overflow-y-auto sm:max-w-[500px]"
         onCloseAutoFocus={(event) => {
           if (stacked) event.preventDefault();
         }}
@@ -510,24 +591,70 @@ function GradeSubmissionDialog({
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="score" className="text-sm font-medium">
-              Submission Score (0-20)
-            </Label>
-            <Input
-              id="score"
-              type="number"
-              min="0"
-              max="20"
-              placeholder="Enter score out of 20"
-              value={scoreInput}
-              onChange={(e) => onScoreInputChange(e.target.value)}
-              className="h-12 placeholder:opacity-100"
-            />
-            <p className="text-xs text-muted-foreground">
-              Enter a value between 0 and 20
-            </p>
-          </div>
+          {hasRubric ? (
+            <div className="space-y-3">
+              {criteria.map((criterion) => (
+                <div key={criterion._id} className="space-y-2">
+                  <Label
+                    htmlFor={`criterion-${criterion._id}`}
+                    className="text-sm font-medium"
+                  >
+                    {criterion.label} (0–{formatPoints(criterion.maxPoints)})
+                  </Label>
+                  <Input
+                    id={`criterion-${criterion._id}`}
+                    type="number"
+                    min="0"
+                    max={criterion.maxPoints}
+                    step="any"
+                    placeholder={`0 to ${formatPoints(criterion.maxPoints)}`}
+                    value={criterionInputs[criterion._id] ?? ""}
+                    onChange={(event) =>
+                      setCriterionInputs((current) => ({
+                        ...current,
+                        [criterion._id]: event.target.value,
+                      }))
+                    }
+                    className="h-12 placeholder:opacity-100"
+                  />
+                </div>
+              ))}
+              <p className="text-sm font-medium tabular-nums">
+                Total{" "}
+                <span className="text-[#34a853]">
+                  {formatPoints(
+                    runningTotal(criteria.map((criterion) => criterionInputs[criterion._id] ?? "")),
+                  )}
+                </span>
+                <span className="font-normal text-muted-foreground"> / 20</span>
+              </p>
+              {showGradeError && (
+                <p className="text-xs text-[#ec1c24]">{gradeError}</p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="score" className="text-sm font-medium">
+                Submission Score (0-20)
+              </Label>
+              <Input
+                id="score"
+                type="number"
+                min="0"
+                max="20"
+                placeholder="Enter score out of 20"
+                value={scoreInput}
+                onChange={(e) => onScoreInputChange(e.target.value)}
+                className="h-12 placeholder:opacity-100"
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter a value between 0 and 20
+              </p>
+              {showGradeError && (
+                <p className="text-xs text-[#ec1c24]">{gradeError}</p>
+              )}
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="comments" className="text-sm font-medium">
@@ -551,8 +678,11 @@ function GradeSubmissionDialog({
             Cancel
           </Button>
           <Button
-            onClick={onSave}
-            disabled={isSaving}
+            onClick={() => {
+              if ("error" in gradeBody) return;
+              onSave(gradeBody);
+            }}
+            disabled={isSaving || gradeError !== null || (hasRubric && !inputsReady)}
             className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
           >
             {isSaving ? (
@@ -576,10 +706,12 @@ function TaskFormFields({
   value,
   onChange,
   mode,
+  criteriaLocked = false,
 }: {
   value: TaskFormData;
   onChange: (updater: (prev: TaskFormData) => TaskFormData) => void;
   mode: "create" | "edit";
+  criteriaLocked?: boolean;
 }) {
   const idPrefix = mode === "edit" ? "editTask" : "newTask";
   const { totalWeeks } = useProgramSettings();
@@ -731,6 +863,13 @@ function TaskFormFields({
           />
         </button>
       </div>
+
+      <CriteriaEditor
+        idPrefix={idPrefix}
+        rows={value.criteria}
+        locked={criteriaLocked}
+        onChange={(criteria) => onChange((prev) => ({ ...prev, criteria }))}
+      />
     </div>
   );
 }
@@ -957,12 +1096,10 @@ function StudentAssessmentView({
     };
   }, [activeTab, isAdminViewing, studentId, user?.id]);
 
-  // Fetch every week's assignment scores when the Review tab is opened.
-  // selectedWeek is deliberately not a dependency — the week is picked out of
-  // this result client-side, so changing it costs no request.
+  // Fetch every week's assignment scores for the task cards and the Review
+  // tab. selectedWeek is deliberately not a dependency — the week is picked
+  // out of this result client-side, so changing it costs no request.
   useEffect(() => {
-    if (activeTab !== "review") return;
-
     const targetStudentId = isAdminViewing ? studentId : user?.id;
     if (!targetStudentId) return;
 
@@ -990,7 +1127,7 @@ function StudentAssessmentView({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, isAdminViewing, studentId, user?.id]);
+  }, [isAdminViewing, studentId, user?.id]);
 
   const selectedWeekScore = useMemo(
     () => assignmentScores.find((entry) => entry.week === selectedWeek) ?? null,
@@ -1010,6 +1147,10 @@ function StudentAssessmentView({
       status = submission.grade !== null ? "completed" : "in-progress";
     }
 
+    const scoreItem = assignmentScores
+      .flatMap((week) => week.assignments)
+      .find((item) => item.assignmentId === assignment._id);
+
     return {
       _id: assignment._id,
       title: assignment.title,
@@ -1017,24 +1158,46 @@ function StudentAssessmentView({
       descriptionFormat: assignment.descriptionFormat,
       dueDate: assignment.dueDateTime,
       status,
-      score: submission?.grade ?? undefined,
+      score: submission?.grade ?? scoreItem?.grade ?? undefined,
       assignment,
+      feedback: submission?.feedback ?? scoreItem?.feedback,
+      criterionScores: submission?.criterionScores?.length
+        ? submission.criterionScores
+        : scoreItem?.criterionScores,
     };
   });
 
   // Convert API submissions to Submission format
-  const mySubmissions: Submission[] = submissions.map((sub) => ({
-    _id: sub._id,
-    title:
-      typeof sub.assignment === "object"
-        ? sub.assignment.title
-        : "Unknown Assignment",
-    submittedDate: sub.submittedAt,
-    status: sub.status ,
-    score: sub.grade ?? undefined,
-    feedback: sub.feedback ?? undefined,
-    submissionLink: sub.submissionLink,
-  }));
+  const mySubmissions: Submission[] = submissions.map((sub) => {
+    const assignmentId =
+      typeof sub.assignment === "object" ? sub.assignment._id : undefined;
+    const issued = assignments.find((item) => item._id === assignmentId);
+    const scoreItem = assignmentScores
+      .flatMap((week) => week.assignments)
+      .find((item) => item.assignmentId === assignmentId);
+    const criteria =
+      (typeof sub.assignment === "object" ? sub.assignment.criteria : undefined) ??
+      issued?.criteria ??
+      scoreItem?.criteria ??
+      [];
+
+    return {
+      _id: sub._id,
+      title:
+        typeof sub.assignment === "object"
+          ? sub.assignment.title
+          : "Unknown Assignment",
+      submittedDate: sub.submittedAt,
+      status: sub.status,
+      score: sub.grade ?? undefined,
+      feedback: sub.feedback ?? scoreItem?.feedback ?? undefined,
+      submissionLink: sub.submissionLink,
+      criteria,
+      criterionScores: sub.criterionScores?.length
+        ? sub.criterionScores
+        : scoreItem?.criterionScores,
+    };
+  });
 
   const handleSubmissionClick = (submission: Submission) => {
     if (!isAdminViewing) return;
@@ -1113,17 +1276,8 @@ function StudentAssessmentView({
     setSubmissionLink("");
   };
 
-  const handleSaveScore = async () => {
-    // Graded on the backend's native 0-20 scale, so the entered value is stored
-    // verbatim. Number rather than parseInt so a half mark like 17.5 survives.
-    const score = Number(scoreInput);
-    if (!Number.isFinite(score) || score < 0 || score > 20) {
-      toast.error("Please enter a valid score between 0 and 20");
-      return;
-    }
-
+  const handleSaveScore = async (body: GradeBody) => {
     if (!selectedSubmission?._id || !isAdminViewing) {
-      // For non-admin or mock data, just show success
       toast.success(`Score saved for ${selectedSubmission?.title}`);
       setIsScoreModalOpen(false);
       setSelectedSubmission(null);
@@ -1134,15 +1288,34 @@ function StudentAssessmentView({
 
     setIsGrading(true);
     try {
-      await gradeSubmission(selectedSubmission._id, score, commentsInput);
-      toast.success(`Score saved for ${selectedSubmission?.title}`);
+      const saved = await gradeSubmission(selectedSubmission._id, body);
+      setSubmissions((current) =>
+        current.map((item) =>
+          item._id === selectedSubmission._id
+            ? {
+                ...item,
+                grade: saved.grade,
+                feedback: saved.feedback ?? item.feedback,
+                criterionScores: saved.criterionScores ?? item.criterionScores,
+                status: "Graded",
+              }
+            : item,
+        ),
+      );
+      const targetStudentId = studentId ?? user?.id;
+      if (targetStudentId) {
+        const data = await getStudentAssignmentScores(targetStudentId);
+        setAssignmentScores(data.weeks ?? []);
+      }
+      toast.success(saved.message || `Score saved for ${selectedSubmission.title}`);
       setIsScoreModalOpen(false);
       setSelectedSubmission(null);
       setScoreInput("");
       setCommentsInput("");
     } catch (error) {
+      const apiError = error as ApiError;
       console.error("Failed to save grade:", error);
-      toast.error("Failed to save grade. Please try again.");
+      toast.error(apiError.message || "Failed to save grade. Please try again.");
     } finally {
       setIsGrading(false);
     }
@@ -1388,6 +1561,15 @@ function StudentAssessmentView({
                               formatCohortDueDate(task.dueDate)}
                           </p>
                         </div>
+                        <CriterionBreakdown
+                          criteria={task.assignment?.criteria}
+                          scores={task.criterionScores}
+                        />
+                        {task.feedback && (
+                          <p className="mt-2 text-sm italic text-muted-foreground">
+                            &ldquo;{task.feedback}&rdquo;
+                          </p>
+                        )}
                       </div>
                       {(task.score != null || isAdminViewing) && (
                         <div className="flex items-center gap-3 sm:justify-end">
@@ -1472,25 +1654,33 @@ function StudentAssessmentView({
 
                         <div className="mt-4 space-y-2 border-t border-border pt-4">
                           {selectedWeekScore.assignments.map((item) => (
-                            <div
-                              key={item.assignmentId}
-                              className="flex flex-wrap items-center justify-between gap-2"
-                            >
-                              <span className="min-w-0 flex-1 truncate text-sm">
-                                {item.title}
-                              </span>
-                              <div className="flex items-center gap-3">
-                                <span className="text-sm font-semibold">
-                                  {item.grade ?? 0}/{selectedWeekScore.maxScore}
+                            <div key={item.assignmentId} className="space-y-1">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="min-w-0 flex-1 truncate text-sm">
+                                  {item.title}
                                 </span>
-                                <Badge
-                                  className={assignmentScoreStatusClass(
-                                    item.status,
-                                  )}
-                                >
-                                  {item.status}
-                                </Badge>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-sm font-semibold">
+                                    {item.grade ?? 0}/{selectedWeekScore.maxScore}
+                                  </span>
+                                  <Badge
+                                    className={assignmentScoreStatusClass(
+                                      item.status,
+                                    )}
+                                  >
+                                    {item.status}
+                                  </Badge>
+                                </div>
                               </div>
+                              <CriterionBreakdown
+                                criteria={item.criteria}
+                                scores={item.criterionScores}
+                              />
+                              {item.feedback && (
+                                <p className="text-xs italic text-muted-foreground">
+                                  &ldquo;{item.feedback}&rdquo;
+                                </p>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1585,8 +1775,20 @@ function StudentAssessmentView({
                     <TableBody>
                       {performanceRatings.map((rating) => {
                         const total = computeRatingTotal(rating);
+                        const isWeeklyRating = [
+                          rating.punctuality,
+                          rating.classParticipation,
+                          rating.classAssessment,
+                          rating.Assignments,
+                          rating.personalDefense,
+                        ].some((value) => typeof value === "number");
+                        const assignmentScore =
+                          !isWeeklyRating && typeof rating.score === "number"
+                            ? rating.score
+                            : null;
                         const status: "graded" | "pending" =
-                          rating.status === "pending" || total === null
+                          rating.status === "pending" ||
+                          (assignmentScore === null && total === null)
                             ? "pending"
                             : "graded";
                         const dateStr = rating.createdAt
@@ -1606,16 +1808,31 @@ function StudentAssessmentView({
                             <TableCell className="font-medium">
                               Week {rating.week}
                             </TableCell>
-                            <TableCell className="max-w-[160px] truncate sm:max-w-none">
-                              {rating.title ||
-                                rating.assessmentTitle ||
-                                `Week ${rating.week} Assessment`}
+                            <TableCell className="max-w-[220px] whitespace-normal sm:max-w-none">
+                              <div>
+                                {rating.title ||
+                                  rating.assessmentTitle ||
+                                  `Week ${rating.week} Assessment`}
+                              </div>
+                              <CriterionBreakdown
+                                criteria={rating.criteria}
+                                scores={rating.criterionScores}
+                              />
+                              {rating.feedback && (
+                                <p className="mt-1 text-xs italic text-muted-foreground">
+                                  &ldquo;{rating.feedback}&rdquo;
+                                </p>
+                              )}
                             </TableCell>
                             <TableCell className="hidden text-muted-foreground sm:table-cell">
                               {dateStr}
                             </TableCell>
                             <TableCell>
-                              {total !== null ? (
+                              {assignmentScore !== null ? (
+                                <span className="font-semibold text-[#34a853]">
+                                  {formatScore20(assignmentScore)}/20
+                                </span>
+                              ) : total !== null ? (
                                 <span className="font-semibold text-[#34a853]">
                                   {total}%
                                 </span>
@@ -1776,6 +1993,10 @@ function StudentAssessmentView({
                           "{submission.feedback}"
                         </p>
                       )}
+                      <CriterionBreakdown
+                        criteria={submission.criteria}
+                        scores={submission.criterionScores}
+                      />
                     </div>
                     {submission.score != null && (
                       <div className="text-right">
@@ -1854,6 +2075,7 @@ function StudentAssessmentView({
                     : ""}
                 </span>
               </div>
+              <CriterionBreakdown criteria={selectedTask?.assignment?.criteria} />
             </div>
 
             {/* Submission Link Input */}
@@ -2345,41 +2567,35 @@ function AdminAssessmentView() {
     setIsScoreModalOpen(true);
   };
 
-  const handleSaveAssignmentGrade = async () => {
-    const score = Number(scoreInput);
-    if (!Number.isFinite(score) || score < 0 || score > 20) {
-      toast.error("Please enter a valid score between 0 and 20");
-      return;
-    }
-
+  const handleSaveAssignmentGrade = async (body: GradeBody) => {
     if (!selectedGradingSubmission?._id) return;
 
     setIsGrading(true);
     try {
-      await gradeSubmission(
-        selectedGradingSubmission._id,
-        score,
-        commentsInput,
-      );
+      const saved = await gradeSubmission(selectedGradingSubmission._id, body);
       toast.success(
-        `Score saved for ${selectedGradingSubmission.student?.name || "student"}`,
+        saved.message ||
+          `Score saved for ${selectedGradingSubmission.student?.name || "student"}`,
       );
       setAssignmentSubmissions((prev) =>
         prev.map((item) =>
           item._id === selectedGradingSubmission._id
             ? {
                 ...item,
-                grade: score,
-                feedback: commentsInput,
+                grade: saved.grade,
+                feedback: saved.feedback ?? item.feedback,
+                criterionScores: saved.criterionScores ?? item.criterionScores,
                 status: "Graded" as const,
               }
             : item,
         ),
       );
+      await fetchAssignments();
       handleCloseAssignmentGradeModal();
     } catch (error) {
+      const apiError = error as ApiError;
       console.error("Failed to save grade:", error);
-      toast.error("Failed to save grade. Please try again.");
+      toast.error(apiError.message || "Failed to save grade. Please try again.");
     } finally {
       setIsGrading(false);
     }
@@ -2520,6 +2736,13 @@ function AdminAssessmentView() {
       return;
     }
 
+    const criteriaError = criteriaDraftError(taskFormData.criteria);
+    if (criteriaError) {
+      toast.error(criteriaError);
+      return;
+    }
+    const criteria = criteriaCreatePayload(taskFormData.criteria);
+
     setIsUploadingTask(true);
     try {
       await createAssignment({
@@ -2531,6 +2754,7 @@ function AdminAssessmentView() {
         dueDate: taskFormData.deadline,
         dueTime: taskFormData.deadlineTime,
         allowLateSubmissions: taskFormData.allowLateSubmission,
+        ...(criteria ? { criteria } : {}),
       });
 
       toast.success(`Task "${taskFormData.title}" uploaded successfully!`);
@@ -2539,8 +2763,9 @@ function AdminAssessmentView() {
       // Keep the task board in sync with the newly created assignment
       await fetchAssignments();
     } catch (error) {
+      const apiError = error as ApiError;
       console.error("Failed to upload task:", error);
-      toast.error("Failed to upload task. Please try again.");
+      toast.error(apiError.message || "Failed to upload task. Please try again.");
     } finally {
       setIsUploadingTask(false);
     }
@@ -2562,6 +2787,11 @@ function AdminAssessmentView() {
       deadline,
       deadlineTime,
       allowLateSubmission: assignment.allowLateSubmissions,
+      criteria: (assignment.criteria ?? []).map((criterion) => ({
+        key: criterion._id,
+        label: criterion.label,
+        maxPoints: formatPoints(criterion.maxPoints),
+      })),
     });
     setAssignmentToEdit(assignment);
   };
@@ -2594,6 +2824,19 @@ function AdminAssessmentView() {
       editTaskFormData.deadline !== originalDue.deadline ||
       editTaskFormData.deadlineTime !== originalDue.deadlineTime;
 
+    let criteriaUpdate: ReturnType<typeof criteriaUpdatePayload> = undefined;
+    if (!assignmentToEdit.criteriaLocked) {
+      const criteriaError = criteriaDraftError(editTaskFormData.criteria);
+      if (criteriaError) {
+        toast.error(criteriaError);
+        return;
+      }
+      criteriaUpdate = criteriaUpdatePayload(
+        editTaskFormData.criteria,
+        assignmentToEdit.criteria ?? [],
+      );
+    }
+
     setIsSavingTask(true);
     try {
       await updateAssignment(assignmentToEdit._id, {
@@ -2614,6 +2857,7 @@ function AdminAssessmentView() {
             }
           : {}),
         allowLateSubmissions: editTaskFormData.allowLateSubmission,
+        ...(criteriaUpdate !== undefined ? { criteria: criteriaUpdate } : {}),
       });
 
       toast.success(`Task "${editTaskFormData.title}" updated successfully!`);
@@ -3093,6 +3337,7 @@ function AdminAssessmentView() {
                             ? " · Late submissions allowed"
                             : ""}
                         </p>
+                        <CriterionBreakdown criteria={assignment.criteria} />
                       </div>
                     ))}
                   </div>
@@ -3137,6 +3382,7 @@ function AdminAssessmentView() {
                                 clamp={1}
                                 className="max-w-full text-xs"
                               />
+                              <CriterionBreakdown criteria={assignment.criteria} />
                             </TableCell>
                             <TableCell className="hidden py-3 text-sm text-muted-foreground whitespace-nowrap md:table-cell">
                               {assignment.stack}
@@ -3291,6 +3537,18 @@ function AdminAssessmentView() {
                       <p className="text-xs text-muted-foreground mt-1">
                         Submitted {formatSubmittedAt(submission.submittedAt)}
                       </p>
+                      <CriterionBreakdown
+                        criteria={
+                          submission.assignment?.criteria ??
+                          submissionsAssignment?.criteria
+                        }
+                        scores={submission.criterionScores}
+                      />
+                      {submission.feedback && (
+                        <p className="mt-1 text-xs italic text-muted-foreground">
+                          &ldquo;{submission.feedback}&rdquo;
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-3">
                       <span
@@ -3330,7 +3588,10 @@ function AdminAssessmentView() {
         }}
         submission={
           selectedGradingSubmission
-            ? gradingToSubmission(selectedGradingSubmission)
+            ? gradingToSubmission(
+                selectedGradingSubmission,
+                submissionsAssignment?.criteria,
+              )
             : null
         }
         studentName={selectedGradingSubmission?.student?.name}
@@ -3545,7 +3806,10 @@ function AdminAssessmentView() {
             </Button>
             <Button
               onClick={handleUploadTask}
-              disabled={isUploadingTask}
+              disabled={
+                isUploadingTask ||
+                criteriaDraftError(taskFormData.criteria) !== null
+              }
               className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
             >
               {isUploadingTask ? (
@@ -3580,6 +3844,7 @@ function AdminAssessmentView() {
             value={editTaskFormData}
             onChange={setEditTaskFormData}
             mode="edit"
+            criteriaLocked={assignmentToEdit?.criteriaLocked ?? false}
           />
 
           <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -3592,7 +3857,11 @@ function AdminAssessmentView() {
             </Button>
             <Button
               onClick={handleSaveTask}
-              disabled={isSavingTask}
+              disabled={
+                isSavingTask ||
+                (!assignmentToEdit?.criteriaLocked &&
+                  criteriaDraftError(editTaskFormData.criteria) !== null)
+              }
               className="bg-[#ffb703] text-[#08022b] hover:bg-[#fb8500]"
             >
               {isSavingTask ? (
